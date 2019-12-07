@@ -71,22 +71,26 @@ class Switcher {
         }.bind(this));
     }
     
-    _state(socket, p_session) {
-        var data = "fef0300002320103" + p_session + "340001000000000000000000" + this._get_time_stamp() + "00000000000000000000f0fe" + config.device_id + "00"
-        data = this._crc_sign_full_packet_com_key(data, pKey);
-        socket.write(Buffer.from(data, 'hex'), function(err) {
-                console.log('data was written')
-        })
-        socket.once('data', function(data) {
-            var device_name = data.toString().substr(40, 32) 
-            var state = data.toString('hex').substr(150, 4) 
-            console.log('device name ' + device_name)
-            if (state == '0000') {
-                console.log('state off')
-            } else {
-                console.log('state on')
-            }
-        })
+    state() {
+        this._login().then(function(p_session) {
+            var socket = net.connect(9957, config.switcher_ip);
+            socket.on('ready', function() {
+                var data = "fef0300002320103" + p_session + "340001000000000000000000" + this._get_time_stamp() + "00000000000000000000f0fe" + config.device_id + "00"
+                data = this._crc_sign_full_packet_com_key(data, P_KEY);
+                socket.write(Buffer.from(data, 'hex'));
+                socket.once('data', function(data) {
+                    var device_name = data.toString().substr(40, 32) 
+                    var state = data.toString('hex').substr(150, 4) 
+                    console.log('device name ' + device_name)
+                    if (state == '0000') {
+                        console.log('state off')
+                    } else {
+                        console.log('state on')
+                    }
+                    socket.end();
+                }.bind(this));
+            }.bind(this));
+        }.bind(this));
     }
 
     _get_time_stamp() {
@@ -106,7 +110,7 @@ class Switcher {
 
 //var val = new Switcher()._crc_sign_full_packet_com_key("fef052000232a1000000000034000100000000000000000018f7ea5d00000000000000000000f0fe1c00000000000000000000000000000000000000000000000000000000000000000000000000", '00000000000000000000000000000000')
 var switcher = new Switcher();
-switcher.on()
+switcher.state()
 // setTimeout(function() {
 //     switcher.off();
 // }, 10000)
