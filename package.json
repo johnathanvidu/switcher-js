@@ -1,0 +1,14 @@
+{
+  "name": "switcher-js",
+  "version": "1.0.0",
+  "description": "switcher smart water heater api",
+  "main": "switcher.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "python-struct": "^1.1.2"
+  }
+}
