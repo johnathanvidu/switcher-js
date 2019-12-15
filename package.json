@@ -3,20 +3,25 @@
   "version": "0.0.1",
   "description": "switcher smart water heater api",
   "main": "index.js",
+  "dependencies": {
+    "python-struct": "^1.1.2"
+  },
+  "devDependencies": {},
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "author": "Johnathan Viduchinsky",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/johnathanvidu/homebridge-switcher-wh.git"
+    "url": "git+https://github.com/johnathanvidu/switcher-js.git"
   },
-  "bugs": {
-    "url": "https://github.com/johnathanvidu/homebridge-switcher-wh/issues"
-  },
+  "keywords": [
+    "switcher",
+    "switcher-js"
+  ],
+  "author": "Johnathan Viduchinsky",
   "license": "MIT",
-  "homepage": "https://github.com/johnathanvidu/homebridge-switcher-wh#readme",
-  "dependencies": {
-    "python-struct": "^1.1.2"
-  }
+  "bugs": {
+    "url": "https://github.com/johnathanvidu/switcher-js/issues"
+  },
+  "homepage": "https://github.com/johnathanvidu/switcher-js#readme"
 }
