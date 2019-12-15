@@ -1,26 +1,36 @@
 "use strict";
 
-const config = require('./config');
-const crc16ccitt = require('./crc').crc16ccitt;
-
 const net = require('net');
 const dgram = require('dgram');
 const struct = require('python-struct');
 const EventEmitter = require('events').EventEmitter;
 
+const crc16ccitt = require('./crc').crc16ccitt;
 
-const P_SESSION = "00000000"
-const P_KEY = "00000000000000000000000000000000"
+
+const P_SESSION = '00000000';
+const P_KEY = '00000000000000000000000000000000';
 
 const STATUS_EVENT = 'status';
 const READY_EVENT = 'ready';
+const ERROR_EVENT = 'error';
 const STATE_CHANGED_EVENT = 'state';
+
 
 const SWITCHER_UDP_IP = "0.0.0.0"
 const SWITCHER_UDP_PORT = 20002
 
 const OFF = 0;
 const ON = 1;
+
+
+class ConnectionError extends Error {
+    constructor(ip, port) {
+        super('connection error: failed to connect to switcher on ip: ${ip}:${port}. please make sure it is turned on and available.');
+        this.ip = ip;
+        this.port = port;
+    }
+}
 
 class SwitcherUDPMessage {
     constructor(message_buffer) {
@@ -29,7 +39,8 @@ class SwitcherUDPMessage {
     }
 
     static is_valid(message_buffer) {
-        return !(message_buffer.toString('hex').substr(0, 4) != "fef0" && message_buffer.byteLength() != 165);
+        return !(message_buffer.toString('hex').substr(0, 4) != 'fef0' && 
+                 message_buffer.byteLength() != 165);
     }
 
     extract_ip_addr() {
@@ -51,7 +62,7 @@ class SwitcherUDPMessage {
     }
 
     extract_switch_state() {
-        return this.data_hex.substr(266, 4) == "0000" ? 0 : 1;  // enums
+        return this.data_hex.substr(266, 4) == '0000' ? OFF : ON;
     }
 
     extract_shutdown_remaining_seconds() {
@@ -76,38 +87,35 @@ class SwitcherUDPMessage {
 class Switcher extends EventEmitter { 
     SWITCHER_PORT = 9957;
 
-    constructor(config, log) {
+    constructor(device_id, switcher_ip, phone_id, device_pass, log) {
         super();
-        var device_config = config['device']; // raise error if device is not here
-        this.device_id = device_config.id;
-        this.switcher_ip = device_config.ip;
-        this.config = config;
-        this.log = log;
+        this.device_id = device_id;
+        this.switcher_ip = switcher_ip;
+        this.phone_id = phone_id || '0000';
+        this.device_pass = device_pass || '00000000';
+        this.log = log || function() {};
         this.p_session = null;
         this.socket = null;
         this._hijack_status_report();
     }
 
-    static discover(config, log) {
-        return new Promise((resolve, reject) => {
-            var socket = dgram.createSocket('udp4', (raw_msg, rinfo) => {
-                var ipaddr = rinfo.address;
-                if (!SwitcherUDPMessage.is_valid(raw_msg)) {
-                    return; // ignoring - not a switcher broadcast message
-                }
-                var udp_message = new SwitcherUDPMessage(raw_msg);
-                config['device'] = {
-                    id: udp_message.extract_device_id(),
-                    ip: ipaddr
-                }
-                resolve(new Switcher(config, log));
-                socket.close();
-            });
-            socket.on('error', (error) => {
-                reject(error);
-            })
-            socket.bind(SWITCHER_UDP_PORT, SWITCHER_UDP_IP);
+    static discover(phone_id, device_pass, log) {
+        var proxy = new EventEmitter.EventEmitter();
+        var socket = dgram.createSocket('udp4', (raw_msg, rinfo) => {
+            var ipaddr = rinfo.address;
+            if (!SwitcherUDPMessage.is_valid(raw_msg)) {
+                return; // ignoring - not a switcher broadcast message
+            }
+            var udp_message = new SwitcherUDPMessage(raw_msg);
+            var device_id = udp_message.extract_device_id();
+            proxy.emit(READY_EVENT, new Switcher(device_id, ipaddr, phone_id, device_pass, log));
+            socket.close();
         });
+        socket.on('error', (error) => {
+            proxy.emit(ERROR_EVENT, error);
+        });
+        socket.bind(SWITCHER_UDP_PORT, SWITCHER_UDP_IP);
+        return proxy;
     }
 
     turn_off() {
@@ -115,25 +123,22 @@ class Switcher extends EventEmitter {
         this._run_power_command(off_command);
     }
 
-    async turn_on(duration=0) {
+    turn_on(duration=0) {
         var on_command = ON +'00' + this._timer_value(duration);
         this._run_power_command(on_command);
     }
 
-    async status(callback) {
+    async status(callback) {  // refactor
         var p_session = await this._login(); 
-        var data = "fef0300002320103" + p_session + "340001000000000000000000" + this._get_time_stamp() + "00000000000000000000f0fe" + this.device_id + "00"
+        var data = "fef0300002320103" + p_session + "340001000000000000000000" + this._get_time_stamp() + "00000000000000000000f0fe" + this.device_id + "00";
         data = this._crc_sign_full_packet_com_key(data, P_KEY);
         var socket = await this._getsocket();
         socket.write(Buffer.from(data, 'hex'));
         socket.once('data', (data) => {
             var device_name = data.toString().substr(40, 32);
             var state_hex = data.toString('hex').substr(150, 4); 
-
             var b = data.toString('hex').substr(178, 8); 
-            var open_time = parseInt(b.substr(6, 2) + b.substr(4, 2) + b.substr(2, 2) + b.substr(0, 2), 16);
-            var remaining_seconds = open_time;
-            this.log('remaining seconds', remaining_seconds);
+            var remaining_seconds = parseInt(b.substr(6, 2) + b.substr(4, 2) + b.substr(2, 2) + b.substr(0, 2), 16);
             var state = state_hex == '0000' ? OFF : ON; 
             callback({
                 name: device_name,
@@ -145,25 +150,23 @@ class Switcher extends EventEmitter {
 
     async _getsocket() {
         if (this.socket && !this.socket.destroyed) {
-            this.log('reusing socket');
             return await this.socket;
         }
         try {
             var socket = await this._connect(this.SWITCHER_PORT, this.switcher_ip);
             socket.on('error', (error) => {
-                this.log('gloabal error event:', error);
+                this.log.debug('gloabal error event:', error);
             });
             socket.on('close', (had_error) => {
-                this.log('gloabal close event:', had_error);
+                this.log.debug('gloabal close event:', had_error);
             });
             this.socket = socket;
-            this.log('sending a new socket');
             return socket;
         }
         catch(error) {
-            this.log('_getsocket raised error:', error);
-            return null;
-            // do something
+            this.socket = null;
+            this.emit(ERROR_EVENT, new ConnectionError(this.switcher_ip, this.SWITCHER_PORT));
+            throw error;
         }
     }
 
@@ -171,15 +174,15 @@ class Switcher extends EventEmitter {
         return new Promise((resolve, reject) => {
             var socket = net.connect(port, ip);
             socket.once('ready', () => {
-                this.log('successful connection, socket was created');
+                this.log.debug('successful connection, socket was created');
                 resolve(socket);
             });
             socket.once('close', (had_error) => {
-                this.log('connection closed, had error:', had_error)
+                this.log.debug('connection closed, had error:', had_error)
                 reject(had_error);
             });
             socket.once('error', (err) => {
-                this.log('connection rejected, error:', error)
+                this.log.debug('connection rejected, error:', error)
                 reject(err);
             });
         });
@@ -197,25 +200,26 @@ class Switcher extends EventEmitter {
                 remaining_seconds: udp_message.extract_shutdown_remaining_seconds()
             })
         });
-        socket.on('close', () => {
-            this.log('status report udp socket was closed');
+        socket.on('error', (error) => {
+            this.emit(ERROR_EVENT, new Error("status report failed. error: " + error.message)); // hoping this will keep the original stack trace
         });
         socket.bind(SWITCHER_UDP_PORT, SWITCHER_UDP_IP);
     }
 
-    async _login(cache = true) {
-        if (cache && this.p_session) return this.p_session;
+    async _login() {
+        if (this.p_session) return this.p_session;
         try {
             this.p_session = await new Promise(async (resolve, reject) => {
-                var data = "fef052000232a100" + P_SESSION + "340001000000000000000000"  + this._get_time_stamp() + "00000000000000000000f0fe1c00" + config.phone_id + "0000" + config.device_pass + "00000000000000000000000000000000000000000000000000000000";
+                var data = "fef052000232a100" + P_SESSION + "340001000000000000000000"  + this._get_time_stamp() + "00000000000000000000f0fe1c00" + 
+                           this.phone_id + "0000" + this.device_pass + "00000000000000000000000000000000000000000000000000000000";
                 data = this._crc_sign_full_packet_com_key(data, P_KEY);
-                this.log("login...");
+                this.log.debug("login...");
                 var socket = await this._getsocket();
                 socket.write(Buffer.from(data, 'hex'));
                 socket.once('data', (data) => {
                     var result_session = data.toString('hex').substr(16, 8)  
                     // todo: make sure result_session exists
-                    this.log('recieved session id: ' + result_session)
+                    this.log.debug('recieved session id: ' + result_session);
                     resolve(result_session); // returning _p_session after a successful login 
                 });
                 this.socket.once('error', (error) => {
@@ -225,20 +229,21 @@ class Switcher extends EventEmitter {
         }
         catch (error) {
             this.log('login failed due to an error', error);
+            this.emit(ERROR_EVENT, new Error('login failed due to an error: ${error.message}'));
         }
         return this.p_session;
     }
 
     async _run_power_command(command_type) {
         var p_session = await this._login(); 
-        var data = "fef05d0002320102" + p_session + "340001000000000000000000" + this._get_time_stamp() + "00000000000000000000f0fe" + this.device_id + "00" + config.phone_id + "0000" + config.device_pass + "000000000000000000000000000000000000000000000000000000000106000" + command_type;
+        var data = "fef05d0002320102" + p_session + "340001000000000000000000" + this._get_time_stamp() + "00000000000000000000f0fe" + this.device_id +
+                   "00" + this.phone_id + "0000" + this.device_pass + "000000000000000000000000000000000000000000000000000000000106000" + command_type;
         data = this._crc_sign_full_packet_com_key(data, P_KEY);
         this.log('sending ' + Object.keys({OFF, ON})[command_type.substr(0, 1)] +  ' command');
         var socket = await this._getsocket();
         socket.write(Buffer.from(data, 'hex'));
         socket.once('data', (data) => {
-            this.log('power command ended succesfully');
-            this.emit(STATE_CHANGED_EVENT, command_type.substr(0, 1));
+            this.emit(STATE_CHANGED_EVENT, command_type.substr(0, 1)); // todo: add old state and new state
         });
     }
 
@@ -263,43 +268,9 @@ class Switcher extends EventEmitter {
     }
 }
 
-function connect(config, log) {
-    var proxy = new EventEmitter.EventEmitter();
-    var should_initiate_discover = config['device'].auto_discover;
-    if (should_initiate_discover) {
-        var ignore = [];
-        var device_config = config['device'];
-        if (device_config.id) {
-            ignore.push('device.id ' + device_config.id);
-        }
-        if (device_config.ip) {
-            ignore.push('device.ip ' + device_config.ip);
-        }
-        var ignore_text = ignore.length == 0 ? '' : 'ignoring ' + ignore.join(', ') + '...';
-        log('discovery is set to true', ignore_text);
-        
-        // disocvery starts here
-        Switcher.discover(config, log)
-        .then((switcher) => {
-            log('discovery ended successfully');
-            proxy.emit(READY_EVENT, switcher)
-        })
-        .catch((error) => {
-            log('discovery encountered an error. this error does not necessarily imply a bad thing. keep waiting...');
-        });
-    }
-    else {
-        log('discovery is set to false, using config data...');
-        setTimeout(() => {
-            proxy.emit(READY_EVENT, new Switcher(config, log));
-        }, 0);
-    }
-    return proxy;
-}
-
 module.exports = {
     Switcher: Switcher,
-    connect: connect,
+    ConnectionError: ConnectionError,
     ON: ON,
     OFF, OFF
 }
