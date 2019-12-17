@@ -1,6 +1,6 @@
 {
   "name": "switcher-js",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "switcher smart water heater api",
   "main": "index.js",
   "dependencies": {
