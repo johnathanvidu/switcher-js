@@ -93,10 +93,10 @@ class Switcher extends EventEmitter {
         this.switcher_ip = switcher_ip;
         this.phone_id = phone_id || '0000';
         this.device_pass = device_pass || '00000000';
-        this.log = log || function() {};
+        this.log = log;
         this.p_session = null;
         this.socket = null;
-        this._hijack_status_report();
+        this.status_socket = this._hijack_status_report();
     }
 
     static discover(phone_id, device_pass, log) {
@@ -148,6 +148,18 @@ class Switcher extends EventEmitter {
         });
     }
 
+    close() {
+        this.log.debug('closing sockets');
+        if (this.socket && !this.socket.destroyed) {
+            this.socket.destroy();
+            this.log.debug('main socket is closed');
+        }
+        if (this.status_socket && !this.status_socket.destroyed) {
+            this.status_socket.close();
+            this.log.debug('status socket is closed');
+        }
+    }
+
     async _getsocket() {
         if (this.socket && !this.socket.destroyed) {
             return await this.socket;
@@ -173,6 +185,7 @@ class Switcher extends EventEmitter {
     _connect(port, ip) {
         return new Promise((resolve, reject) => {
             var socket = net.connect(port, ip);
+            socket.setKeepAlive(true);
             socket.once('ready', () => {
                 this.log.debug('successful connection, socket was created');
                 resolve(socket);
@@ -181,9 +194,9 @@ class Switcher extends EventEmitter {
                 this.log.debug('connection closed, had error:', had_error)
                 reject(had_error);
             });
-            socket.once('error', (err) => {
+            socket.once('error', (error) => {
                 this.log.debug('connection rejected, error:', error)
-                reject(err);
+                reject(error);
             });
         });
     }
@@ -204,6 +217,7 @@ class Switcher extends EventEmitter {
             this.emit(ERROR_EVENT, new Error("status report failed. error: " + error.message)); // hoping this will keep the original stack trace
         });
         socket.bind(SWITCHER_UDP_PORT, SWITCHER_UDP_IP);
+        return socket;
     }
 
     async _login() {
@@ -239,7 +253,7 @@ class Switcher extends EventEmitter {
         var data = "fef05d0002320102" + p_session + "340001000000000000000000" + this._get_time_stamp() + "00000000000000000000f0fe" + this.device_id +
                    "00" + this.phone_id + "0000" + this.device_pass + "000000000000000000000000000000000000000000000000000000000106000" + command_type;
         data = this._crc_sign_full_packet_com_key(data, P_KEY);
-        this.log('sending ' + Object.keys({OFF, ON})[command_type.substr(0, 1)] +  ' command');
+        this.log.debug('sending ' + Object.keys({OFF, ON})[command_type.substr(0, 1)] +  ' command');
         var socket = await this._getsocket();
         socket.write(Buffer.from(data, 'hex'));
         socket.once('data', (data) => {
