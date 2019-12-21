@@ -1,10 +1,10 @@
 # switcher-js
-switcher-js is a native nodejs library for controling [switcher smart water heater](https://switcher.co.il/).
-It is a native javascript port of a wonderful python script (can be found [here](https://github.com/NightRang3r/Switcher-V2-Python)) created as a result of the extensive work which has been done by Aviad Golan ([@AviadGolan](https://twitter.com/AviadGolan)) and Shai rod ([@NightRang3r](https://twitter.com/NightRang3r)).
+switcher-js is a native nodejs library for controling [switcher smart water heater](https://switcher.co.il/).<br/>
+It is a native javascript port of a wonderful python script (can be found [here](https://github.com/NightRang3r/Switcher-V2-Python)) created as a result of the extensive work which has been done by Aviad Golan ([@AviadGolan](https://twitter.com/AviadGolan)) and Shai rod ([@NightRang3r](https://twitter.com/NightRang3r)).<br/>
 It is a work in progress and there is still a lot of work left to do.
 
-I built it according to my specific needs and my specific device. If any issue arises, please feel free to open an issue and I'll do my best to help.  
-Current supported devices known to work with switcher-js:
+I built it according to my specific needs and my specific device. If any issue arises, please feel free to open an issue and I'll do my best to help.<br/>
+Current supported devices known to work with switcher-js:><br/>
 Switcher V3 (Switcher touch) - FW V1.51
 
 ## Installation
@@ -33,7 +33,7 @@ proxy.on('ready', (switcher) => {
 
 discover will emit a ready event when auto discovery completed.
 
-phone-id (optional) - will be defaulted to 0000 if no value provided
+phone-id (optional) - will be defaulted to 0000 if no value provided<br/>
 device-pass (optional) - will be defaulted to 00000000 if no value provided
 
 Examples:
