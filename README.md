@@ -4,8 +4,8 @@ It is a native javascript port of a wonderful python script (can be found [here]
 It is a work in progress and there is still a lot of work left to do.
 
 I built it according to my specific needs and my specific device. If any issue arises, please feel free to open an issue and I'll do my best to help.<br/>
-Current supported devices known to work with switcher-js:><br/>
-Switcher V3 (Switcher touch) - FW V1.51
+Current supported devices known to work with switcher-js:<br/>
+- **Switcher V3** (Switcher touch) - FW **V1.51**
 
 ## Installation
 Use [npm](https://www.npmjs.com/) to install switcher-js.
