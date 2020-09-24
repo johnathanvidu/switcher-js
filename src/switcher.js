@@ -54,7 +54,7 @@ class SwitcherUDPMessage {
     }
 
     extract_device_name() {
-        return this.data_str.substr(41, 32);
+        return this.data_str.substr(40, 32).replace(/\0/g, ''); // remove leftovers after the name
     }
 
     extract_device_id() {
@@ -74,6 +74,22 @@ class SwitcherUDPMessage {
             time_left_section.substr(0, 2), 16);
     }
 
+    extract_default_shutdown_seconds() {
+        var shutdown_settings_section = this.data_hex.substr(310, 8); 
+        return parseInt(
+            shutdown_settings_section.substr(6, 2) + 
+            shutdown_settings_section.substr(4, 2) + 
+            shutdown_settings_section.substr(2, 2) + 
+            shutdown_settings_section.substr(0, 2), 16);
+    }
+    
+    extract_power_consumption() {
+        var power_consumption_section = this.data_hex.substr(270, 4); 
+        return parseInt(
+            power_consumption_section.substr(2, 2) + 
+            power_consumption_section.substr(0, 2), 16);
+    }
+
     inet_ntoa(num) { // extract to utils https://stackoverflow.com/a/21613691
         var a = ((num >> 24) & 0xFF) >>> 0;
         var b = ((num >> 16) & 0xFF) >>> 0;
@@ -85,22 +101,22 @@ class SwitcherUDPMessage {
 
 
 class Switcher extends EventEmitter { 
-    SWITCHER_PORT = 9957;
-
-    constructor(device_id, switcher_ip, phone_id, device_pass, log) {
+    constructor(device_id, switcher_ip, log) {
         super();
         this.device_id = device_id;
         this.switcher_ip = switcher_ip;
-        this.phone_id = phone_id || '0000';
-        this.device_pass = device_pass || '00000000';
+        this.phone_id = '0000';
+        this.device_pass = '00000000';
+        this.SWITCHER_PORT = 9957;
         this.log = log;
         this.p_session = null;
         this.socket = null;
         this.status_socket = this._hijack_status_report();
     }
 
-    static discover(phone_id, device_pass, log) {
+    static discover(log, identifier, discovery_timeout) {
         var proxy = new EventEmitter.EventEmitter();
+        var timeout = null
         var socket = dgram.createSocket('udp4', (raw_msg, rinfo) => {
             var ipaddr = rinfo.address;
             if (!SwitcherUDPMessage.is_valid(raw_msg)) {
@@ -108,13 +124,39 @@ class Switcher extends EventEmitter {
             }
             var udp_message = new SwitcherUDPMessage(raw_msg);
             var device_id = udp_message.extract_device_id();
-            proxy.emit(READY_EVENT, new Switcher(device_id, ipaddr, phone_id, device_pass, log));
+            var device_name = udp_message.extract_device_name();
+            if (identifier && identifier !== device_id && identifier !== device_name && identifier !== ipaddr) {
+                log.debug(`Found ${device_name} (${ipaddr}) - Not the device we\'re looking for!`);
+                return;
+            }
+
+            proxy.emit(READY_EVENT, new Switcher(device_id, ipaddr, log));
+            clearTimeout(timeout);
             socket.close();
+            socket = null;
+            
         });
         socket.on('error', (error) => {
             proxy.emit(ERROR_EVENT, error);
+            clearTimeout(timeout);
+            socket.close();
+            socket = null;
         });
         socket.bind(SWITCHER_UDP_PORT, SWITCHER_UDP_IP);
+        if (discovery_timeout);
+            timeout = setTimeout(() => {
+                log.debug(`stopping discovery, closing socket`);
+                socket.close();
+                socket = null;
+            }, discovery_timeout*1000);
+
+        proxy.close = () => {
+            log.debug('closing discover socket');
+            if (socket) {
+                socket.close();
+                log.debug('discovery socket is closed');
+            }
+        }
         return proxy;
     }
 
@@ -135,15 +177,21 @@ class Switcher extends EventEmitter {
         var socket = await this._getsocket();
         socket.write(Buffer.from(data, 'hex'));
         socket.once('data', (data) => {
-            var device_name = data.toString().substr(40, 32);
-            var state_hex = data.toString('hex').substr(150, 4); 
+            var device_name = data.toString().substr(40, 32).replace(/\0/g, '');;
+            var state_hex = data.toString('hex').substr(150, 4);
+            var state = state_hex == '0000' ? OFF : ON; 
             var b = data.toString('hex').substr(178, 8); 
             var remaining_seconds = parseInt(b.substr(6, 2) + b.substr(4, 2) + b.substr(2, 2) + b.substr(0, 2), 16);
-            var state = state_hex == '0000' ? OFF : ON; 
+            b = data.toString('hex').substr(194, 8);
+            var default_shutdown_seconds = parseInt(b.substr(6, 2) + b.substr(4, 2) + b.substr(2, 2) + b.substr(0, 2), 16);
+            b = data.toString('hex').substr(154, 4); 
+            var power_consumption = parseInt(b.substr(2, 2) + b.substr(0, 2), 16);
             callback({
                 name: device_name,
                 state: state,
                 remaining_seconds: remaining_seconds,
+                default_shutdown_seconds: default_shutdown_seconds,
+                power_consumption: power_consumption
             });
         });
     }
@@ -210,7 +258,9 @@ class Switcher extends EventEmitter {
             this.emit(STATUS_EVENT, {
                 name: udp_message.extract_device_name(),
                 state: udp_message.extract_switch_state(),
-                remaining_seconds: udp_message.extract_shutdown_remaining_seconds()
+                remaining_seconds: udp_message.extract_shutdown_remaining_seconds(),
+                default_shutdown_seconds: udp_message.extract_default_shutdown_seconds(),
+                power_consumption: udp_message.extract_power_consumption()
             })
         });
         socket.on('error', (error) => {

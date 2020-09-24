@@ -17,24 +17,30 @@ npm install switcher-js
 ```javascript
 const Switcher = require('switcher-js').Switcher;
 
-var switcher = new Switcher('device-id', 'device-ip', 'phone-id', 'device-pass', 'log function');
+var switcher = new Switcher('device-id', 'device-ip', 'log function');
 ```
 
 To use the auto discover functionallity use: 
 ```javascript
 const Switcher = require('switcher-js').Switcher;
 
-var proxy = Switcher.discover('phone-id', 'device-pass', 'log function');
+var proxy = Switcher.discover('log function', 'identifier(optional)', 'discovery-timeout(optional)');
 
 proxy.on('ready', (switcher) => {
     switcher.turn_on(); // switcher is a new initialized instance of Switcher class
 });
+
+
+setTimeout(() => {
+    proxy.close(); // optional way to close the discovery (if discovery-timeout is not set)
+}, 10000);
+
 ```
 
 discover will emit a ready event when auto discovery completed.
 
-phone-id (optional) - will be defaulted to 0000 if no value provided<br/>
-device-pass (optional) - will be defaulted to 00000000 if no value provided
+identifier (optional) - you can provide the Switcher name, IP or device-id to detect specific device.<br/>
+discovery-timeout (optional) - set maximum time in seconds to scan for devices.
 
 Examples:
 ```javascript
@@ -42,8 +48,20 @@ const Switcher = require('switcher-js').Switcher;
 
 var switcher = new Switcher('device-id', 'device-ip', 'phone-id', 'device-pass', 'log function');
 
-switcher.on('state', (state) => { // state is the new switcher state 
-    
+switcher.on('status', (status) => { // status broadcast message
+    console.log(status)
+    /* response:
+    {
+        name: 'Boiler',
+        state: 1,
+        remaining_seconds: 591,
+        default_shutdown_seconds: 5400,
+        power_consumption: 2447 // in watts
+    }
+    */
+});
+switcher.on('state', (state) => { // state is the new switcher state
+    console.log(state) // 1
 });
 switcher.on('error', (error) => {
 
@@ -52,6 +70,9 @@ switcher.on('error', (error) => {
 switcher.turn_on();   // turns switcher on
 switcher.turn_on(15); // turns switcher on for 15 minutes
 switcher.turn_off();  // turns switcher off
+switcher.status(status => { // get status
+    console.log(status);
+});
 switcher.close();     // closes any dangling connections safely
 ```
 
