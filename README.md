@@ -46,7 +46,7 @@ Examples:
 ```javascript
 const Switcher = require('switcher-js').Switcher;
 
-var switcher = new Switcher('device-id', 'device-ip', 'phone-id', 'device-pass', 'log function');
+var switcher = new Switcher('device-id', 'device-ip', 'log function');
 
 switcher.on('status', (status) => { // status broadcast message
     console.log(status)
