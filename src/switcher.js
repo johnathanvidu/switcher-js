@@ -27,7 +27,7 @@ const ON = 1;
 
 class ConnectionError extends Error {
     constructor(ip, port) {
-        super('connection error: failed to connect to switcher on ip: ${ip}:${port}. please make sure it is turned on and available.');
+        super(`connection error: failed to connect to switcher on ip: ${ip}:${port}. please make sure it is turned on and available.`);
         this.ip = ip;
         this.port = port;
     }
