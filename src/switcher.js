@@ -15,6 +15,7 @@ const STATUS_EVENT = 'status';
 const READY_EVENT = 'ready';
 const ERROR_EVENT = 'error';
 const STATE_CHANGED_EVENT = 'state';
+const DURATION_CHANGED_EVENT = 'duration'
 
 
 const SWITCHER_UDP_IP = "0.0.0.0"
@@ -170,6 +171,21 @@ class Switcher extends EventEmitter {
         this._run_power_command(on_command);
     }
 
+    async set_default_shutdown(duration=3600) {
+        var auto_close = this._set_default_shutdown(duration)
+        var p_session = await this._login(); 
+        var data = "fef05b0002320102" + p_session + "340001000000000000000000" + this._get_time_stamp() + "00000000000000000000f0fe" + this.device_id +
+                   "00" + this.phone_id + "0000" + this.device_pass + "00000000000000000000000000000000000000000000000000000000040400" + auto_close;
+        data = this._crc_sign_full_packet_com_key(data, P_KEY);
+        this.log.debug(`sending default_shutdown command | ${duration} seconds`);
+        var socket = await this._getsocket();
+        socket.write(Buffer.from(data, 'hex'));
+        socket.once('data', (data) => {
+            this.emit(DURATION_CHANGED_EVENT, duration); // todo: add old state and new state
+        });
+
+    }
+
     async status(callback) {  // refactor
         var p_session = await this._login(); 
         var data = "fef0300002320103" + p_session + "340001000000000000000000" + this._get_time_stamp() + "00000000000000000000f0fe" + this.device_id + "00";
@@ -320,6 +336,16 @@ class Switcher extends EventEmitter {
         if (minutes == 0) return "00000000";  // when duration set to zero, Switcher sends regular on command
         var seconds = parseInt(minutes) * 60;
         return struct.pack('<I', seconds).toString('hex');
+    }
+
+    _set_default_shutdown(seconds) {
+        if (seconds < 3600) {
+            this.log.debug('Value Can\'t be less than 1 hour!, setting to 3600')
+            seconds = 3600
+        } else if (seconds > 86340) {
+            this.log.debug('Value can\'t be more than 23 hours and 59 minutes, setting to 86340')
+            seconds = 86340
+        } else return struct.pack('<I', seconds).toString('hex');
     }
 
     _crc_sign_full_packet_com_key(p_data, p_key) {
