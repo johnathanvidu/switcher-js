@@ -131,6 +131,7 @@ class Switcher extends EventEmitter {
                 return;
             }
 
+            // log(`Found ${device_name} (${ipaddr})!`);
             proxy.emit(READY_EVENT, new Switcher(device_id, ipaddr, log));
             clearTimeout(timeout);
             socket.close();
@@ -213,12 +214,13 @@ class Switcher extends EventEmitter {
     }
 
     close() {
-        this.log.debug('closing sockets');
         if (this.socket && !this.socket.destroyed) {
+            this.log.debug('closing sockets');
             this.socket.destroy();
             this.log.debug('main socket is closed');
         }
         if (this.status_socket && !this.status_socket.destroyed) {
+            this.log.debug('closing sockets');
             this.status_socket.close();
             this.log.debug('status socket is closed');
         }
@@ -294,7 +296,12 @@ class Switcher extends EventEmitter {
                            this.phone_id + "0000" + this.device_pass + "00000000000000000000000000000000000000000000000000000000";
                 data = this._crc_sign_full_packet_com_key(data, P_KEY);
                 this.log.debug("login...");
-                var socket = await this._getsocket();
+                try {
+                    var socket = await this._getsocket();
+                } catch (err) {
+                    reject(err)
+                    return
+                }
                 socket.write(Buffer.from(data, 'hex'));
                 socket.once('data', (data) => {
                     var result_session = data.toString('hex').substr(16, 8)  
@@ -309,7 +316,7 @@ class Switcher extends EventEmitter {
         }
         catch (error) {
             this.log('login failed due to an error', error);
-            this.emit(ERROR_EVENT, new Error('login failed due to an error: ${error.message}'));
+            this.emit(ERROR_EVENT, new Error(`login failed due to an error: ${error.message}`));
         }
         return this.p_session;
     }
@@ -321,6 +328,12 @@ class Switcher extends EventEmitter {
         data = this._crc_sign_full_packet_com_key(data, P_KEY);
         this.log.debug('sending ' + Object.keys({OFF, ON})[command_type.substr(0, 1)] +  ' command');
         var socket = await this._getsocket();
+        try {
+            var socket = await this._getsocket();
+        } catch (err) {
+            this.log.debug(err)
+            return
+        }
         socket.write(Buffer.from(data, 'hex'));
         socket.once('data', (data) => {
             this.emit(STATE_CHANGED_EVENT, command_type.substr(0, 1)); // todo: add old state and new state
