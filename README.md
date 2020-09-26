@@ -1,4 +1,7 @@
-# switcher-js
+# switcher-js2
+
+*Fork of @johnathanvidu JS implementation*
+
 switcher-js is a native nodejs library for controling [switcher smart water heater](https://switcher.co.il/).<br/>
 It is a native javascript port of a wonderful python script (can be found [here](https://github.com/NightRang3r/Switcher-V2-Python)) created as a result of the extensive work which has been done by Aviad Golan ([@AviadGolan](https://twitter.com/AviadGolan)) and Shai rod ([@NightRang3r](https://twitter.com/NightRang3r)).<br/>
 It is a work in progress and there is still a lot of work left to do.

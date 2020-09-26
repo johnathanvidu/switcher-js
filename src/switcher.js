@@ -40,8 +40,8 @@ class SwitcherUDPMessage {
     }
 
     static is_valid(message_buffer) {
-        return !(message_buffer.toString('hex').substr(0, 4) != 'fef0' && 
-                 message_buffer.byteLength() != 165);
+        return (Buffer.isBuffer(message_buffer) && message_buffer.toString('hex').substr(0, 4) === 'fef0' && 
+            Buffer.byteLength(message_buffer) === 165);
     }
 
     extract_ip_addr() {
@@ -118,7 +118,7 @@ class Switcher extends EventEmitter {
     static discover(log, identifier, discovery_timeout) {
         var proxy = new EventEmitter.EventEmitter();
         var timeout = null
-        var socket = dgram.createSocket('udp4', (raw_msg, rinfo) => {
+        var socket = dgram.createSocket({'type' : 'udp4', 'reuseAddr' : true}, (raw_msg, rinfo) => {
             var ipaddr = rinfo.address;
             if (!SwitcherUDPMessage.is_valid(raw_msg)) {
                 return; // ignoring - not a switcher broadcast message
@@ -204,6 +204,7 @@ class Switcher extends EventEmitter {
             b = data.toString('hex').substr(154, 4); 
             var power_consumption = parseInt(b.substr(2, 2) + b.substr(0, 2), 16);
             callback({
+                device_id: this.device_id,
                 name: device_name,
                 state: state,
                 remaining_seconds: remaining_seconds,
@@ -268,18 +269,22 @@ class Switcher extends EventEmitter {
     }
 
     _hijack_status_report() {
-        var socket = dgram.createSocket('udp4', (raw_msg, rinfo) => {
+        var socket = dgram.createSocket({'type' : 'udp4', 'reuseAddr' : true}, (raw_msg, rinfo) => {
             if (!SwitcherUDPMessage.is_valid(raw_msg)) {
                 return; // ignoring - not a switcher broadcast message
             }
             var udp_message = new SwitcherUDPMessage(raw_msg);
-            this.emit(STATUS_EVENT, {
-                name: udp_message.extract_device_name(),
-                state: udp_message.extract_switch_state(),
-                remaining_seconds: udp_message.extract_shutdown_remaining_seconds(),
-                default_shutdown_seconds: udp_message.extract_default_shutdown_seconds(),
-                power_consumption: udp_message.extract_power_consumption()
-            })
+
+            var device_id = udp_message.extract_device_id()
+            if (device_id === this.device_id)
+                this.emit(STATUS_EVENT, {
+                    device_id: device_id,
+                    name: udp_message.extract_device_name(),
+                    state: udp_message.extract_switch_state(),
+                    remaining_seconds: udp_message.extract_shutdown_remaining_seconds(),
+                    default_shutdown_seconds: udp_message.extract_default_shutdown_seconds(),
+                    power_consumption: udp_message.extract_power_consumption()
+                })
         });
         socket.on('error', (error) => {
             this.emit(ERROR_EVENT, new Error("status report failed. error: " + error.message)); // hoping this will keep the original stack trace

@@ -1,7 +1,7 @@
 {
-  "name": "switcher-js",
-  "version": "0.0.3",
-  "description": "switcher smart water heater api",
+  "name": "switcher-js2",
+  "version": "1.0.0",
+  "description": "switcher smart water heater api (fork of @johnathanvidu)",
   "main": "index.js",
   "dependencies": {
     "python-struct": "^1.1.2"
@@ -12,16 +12,16 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/johnathanvidu/switcher-js.git"
+    "url": "git+https://github.com/nitaybz/switcher-js.git"
   },
   "keywords": [
     "switcher",
     "switcher-js"
   ],
-  "author": "Johnathan Viduchinsky",
+  "author": "nitaybz",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/johnathanvidu/switcher-js/issues"
+    "url": "https://github.com/nitaybz/switcher-js/issues"
   },
   "homepage": "https://github.com/johnathanvidu/switcher-js#readme"
 }
