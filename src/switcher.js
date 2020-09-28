@@ -12,6 +12,7 @@ const P_SESSION = '00000000';
 const P_KEY = '00000000000000000000000000000000';
 
 const STATUS_EVENT = 'status';
+const MESSAGE_EVENT = 'message'
 const READY_EVENT = 'ready';
 const ERROR_EVENT = 'error';
 const STATE_CHANGED_EVENT = 'state';
@@ -102,7 +103,7 @@ class SwitcherUDPMessage {
 
 
 class Switcher extends EventEmitter { 
-    constructor(device_id, switcher_ip, log) {
+    constructor(device_id, switcher_ip, log, listen) {
         super();
         this.device_id = device_id;
         this.switcher_ip = switcher_ip;
@@ -112,13 +113,14 @@ class Switcher extends EventEmitter {
         this.log = log;
         this.p_session = null;
         this.socket = null;
-        this.status_socket = this._hijack_status_report();
+        if (listen)
+            this.status_socket = this._hijack_status_report();
     }
 
     static discover(log, identifier, discovery_timeout) {
         var proxy = new EventEmitter.EventEmitter();
         var timeout = null
-        var socket = dgram.createSocket({'type' : 'udp4', 'reuseAddr' : true}, (raw_msg, rinfo) => {
+        var socket = dgram.createSocket('udp4', (raw_msg, rinfo) => {
             var ipaddr = rinfo.address;
             if (!SwitcherUDPMessage.is_valid(raw_msg)) {
                 return; // ignoring - not a switcher broadcast message
@@ -127,7 +129,7 @@ class Switcher extends EventEmitter {
             var device_id = udp_message.extract_device_id();
             var device_name = udp_message.extract_device_name();
             if (identifier && identifier !== device_id && identifier !== device_name && identifier !== ipaddr) {
-                log.debug(`Found ${device_name} (${ipaddr}) - Not the device we\'re looking for!`);
+                log(`Found ${device_name} (${ipaddr}) - Not the device we\'re looking for!`);
                 return;
             }
 
@@ -147,16 +149,62 @@ class Switcher extends EventEmitter {
         socket.bind(SWITCHER_UDP_PORT, SWITCHER_UDP_IP);
         if (discovery_timeout);
             timeout = setTimeout(() => {
-                log.debug(`stopping discovery, closing socket`);
+                log(`stopping discovery, closing socket`);
                 socket.close();
                 socket = null;
             }, discovery_timeout*1000);
 
         proxy.close = () => {
-            log.debug('closing discover socket');
+            log('closing discover socket');
             if (socket) {
                 socket.close();
-                log.debug('discovery socket is closed');
+                log('discovery socket is closed');
+            }
+        }
+        return proxy;
+    }
+
+    static listen(log, identifier) {
+        var proxy = new EventEmitter.EventEmitter();
+        var socket = dgram.createSocket('udp4', (raw_msg, rinfo) => {
+            var ipaddr = rinfo.address;
+            if (!SwitcherUDPMessage.is_valid(raw_msg)) {
+                return; // ignoring - not a switcher broadcast message
+            }
+            var udp_message = new SwitcherUDPMessage(raw_msg);
+            var device_id = udp_message.extract_device_id();
+            var device_name = udp_message.extract_device_name();
+            if (identifier && identifier !== device_id && identifier !== device_name && identifier !== ipaddr) {
+                log(`Found ${device_name} (${ipaddr}) - Not the device we\'re looking for!`);
+                return;
+            }
+
+            // log(`Found ${device_name} (${ipaddr})!`);
+            proxy.emit(MESSAGE_EVENT, {
+                device_id: device_id,
+                device_ip: ipaddr,
+                name: device_name,
+                state: {
+                    power: udp_message.extract_switch_state,
+                    remaining_seconds: udp_message.extract_shutdown_remaining_seconds,
+                    default_shutdown_seconds: udp_message.extract_default_shutdown_seconds,
+                    power_consumption: udp_message.extract_power_consumption
+                }
+            });
+            
+        });
+        socket.on('error', (error) => {
+            proxy.emit(ERROR_EVENT, error);
+            socket.close();
+            socket = null;
+        });
+        socket.bind(SWITCHER_UDP_PORT, SWITCHER_UDP_IP);
+
+        proxy.close = () => {
+            log('closing listener socket');
+            if (socket) {
+                socket.close();
+                log('listener socket is closed');
             }
         }
         return proxy;
@@ -178,7 +226,7 @@ class Switcher extends EventEmitter {
         var data = "fef05b0002320102" + p_session + "340001000000000000000000" + this._get_time_stamp() + "00000000000000000000f0fe" + this.device_id +
                    "00" + this.phone_id + "0000" + this.device_pass + "00000000000000000000000000000000000000000000000000000000040400" + auto_close;
         data = this._crc_sign_full_packet_com_key(data, P_KEY);
-        this.log.debug(`sending default_shutdown command | ${duration} seconds`);
+        this.log(`sending default_shutdown command | ${duration} seconds`);
         var socket = await this._getsocket();
         socket.write(Buffer.from(data, 'hex'));
         socket.once('data', (data) => {
@@ -205,8 +253,7 @@ class Switcher extends EventEmitter {
             var power_consumption = parseInt(b.substr(2, 2) + b.substr(0, 2), 16);
             callback({
                 device_id: this.device_id,
-                name: device_name,
-                state: state,
+                power: state,
                 remaining_seconds: remaining_seconds,
                 default_shutdown_seconds: default_shutdown_seconds,
                 power_consumption: power_consumption
@@ -216,14 +263,14 @@ class Switcher extends EventEmitter {
 
     close() {
         if (this.socket && !this.socket.destroyed) {
-            this.log.debug('closing sockets');
+            this.log('closing sockets');
             this.socket.destroy();
-            this.log.debug('main socket is closed');
+            this.log('main socket is closed');
         }
         if (this.status_socket && !this.status_socket.destroyed) {
-            this.log.debug('closing sockets');
+            this.log('closing sockets');
             this.status_socket.close();
-            this.log.debug('status socket is closed');
+            this.log('status socket is closed');
         }
     }
 
@@ -234,10 +281,10 @@ class Switcher extends EventEmitter {
         try {
             var socket = await this._connect(this.SWITCHER_PORT, this.switcher_ip);
             socket.on('error', (error) => {
-                this.log.debug('gloabal error event:', error);
+                this.log('gloabal error event:', error);
             });
             socket.on('close', (had_error) => {
-                this.log.debug('gloabal close event:', had_error);
+                this.log('gloabal close event:', had_error);
             });
             this.socket = socket;
             return socket;
@@ -254,22 +301,22 @@ class Switcher extends EventEmitter {
             var socket = net.connect(port, ip);
             socket.setKeepAlive(true);
             socket.once('ready', () => {
-                this.log.debug('successful connection, socket was created');
+                this.log('successful connection, socket was created');
                 resolve(socket);
             });
             socket.once('close', (had_error) => {
-                this.log.debug('connection closed, had error:', had_error)
+                this.log('connection closed, had error:', had_error)
                 reject(had_error);
             });
             socket.once('error', (error) => {
-                this.log.debug('connection rejected, error:', error)
+                this.log('connection rejected, error:', error)
                 reject(error);
             });
         });
     }
 
     _hijack_status_report() {
-        var socket = dgram.createSocket({'type' : 'udp4', 'reuseAddr' : true}, (raw_msg, rinfo) => {
+        var socket = dgram.createSocket('udp4', (raw_msg, rinfo) => {
             if (!SwitcherUDPMessage.is_valid(raw_msg)) {
                 return; // ignoring - not a switcher broadcast message
             }
@@ -278,6 +325,7 @@ class Switcher extends EventEmitter {
             var device_id = udp_message.extract_device_id()
             if (device_id === this.device_id)
                 this.emit(STATUS_EVENT, {
+                    device_id: device_id,
                     device_id: device_id,
                     name: udp_message.extract_device_name(),
                     state: udp_message.extract_switch_state(),
@@ -300,7 +348,7 @@ class Switcher extends EventEmitter {
                 var data = "fef052000232a100" + P_SESSION + "340001000000000000000000"  + this._get_time_stamp() + "00000000000000000000f0fe1c00" + 
                            this.phone_id + "0000" + this.device_pass + "00000000000000000000000000000000000000000000000000000000";
                 data = this._crc_sign_full_packet_com_key(data, P_KEY);
-                this.log.debug("login...");
+                this.log("login...");
                 try {
                     var socket = await this._getsocket();
                 } catch (err) {
@@ -311,7 +359,7 @@ class Switcher extends EventEmitter {
                 socket.once('data', (data) => {
                     var result_session = data.toString('hex').substr(16, 8)  
                     // todo: make sure result_session exists
-                    this.log.debug('recieved session id: ' + result_session);
+                    this.log('recieved session id: ' + result_session);
                     resolve(result_session); // returning _p_session after a successful login 
                 });
                 this.socket.once('error', (error) => {
@@ -331,12 +379,12 @@ class Switcher extends EventEmitter {
         var data = "fef05d0002320102" + p_session + "340001000000000000000000" + this._get_time_stamp() + "00000000000000000000f0fe" + this.device_id +
                    "00" + this.phone_id + "0000" + this.device_pass + "000000000000000000000000000000000000000000000000000000000106000" + command_type;
         data = this._crc_sign_full_packet_com_key(data, P_KEY);
-        this.log.debug('sending ' + Object.keys({OFF, ON})[command_type.substr(0, 1)] +  ' command');
+        this.log('sending ' + Object.keys({OFF, ON})[command_type.substr(0, 1)] +  ' command');
         var socket = await this._getsocket();
         try {
             var socket = await this._getsocket();
         } catch (err) {
-            this.log.debug(err)
+            this.log(err)
             return
         }
         socket.write(Buffer.from(data, 'hex'));
@@ -358,10 +406,10 @@ class Switcher extends EventEmitter {
 
     _set_default_shutdown(seconds) {
         if (seconds < 3600) {
-            this.log.debug('Value Can\'t be less than 1 hour!, setting to 3600')
+            this.log('Value Can\'t be less than 1 hour!, setting to 3600')
             seconds = 3600
         } else if (seconds > 86340) {
-            this.log.debug('Value can\'t be more than 23 hours and 59 minutes, setting to 86340')
+            this.log('Value can\'t be more than 23 hours and 59 minutes, setting to 86340')
             seconds = 86340
         } else return struct.pack('<I', seconds).toString('hex');
     }
@@ -378,7 +426,5 @@ class Switcher extends EventEmitter {
 
 module.exports = {
     Switcher: Switcher,
-    ConnectionError: ConnectionError,
-    ON: ON,
-    OFF, OFF
+    ConnectionError: ConnectionError
 }
