@@ -185,10 +185,10 @@ class Switcher extends EventEmitter {
                 device_ip: ipaddr,
                 name: device_name,
                 state: {
-                    power: udp_message.extract_switch_state,
-                    remaining_seconds: udp_message.extract_shutdown_remaining_seconds,
-                    default_shutdown_seconds: udp_message.extract_default_shutdown_seconds,
-                    power_consumption: udp_message.extract_power_consumption
+                    power: udp_message.extract_switch_state(),
+                    remaining_seconds: udp_message.extract_shutdown_remaining_seconds(),
+                    default_shutdown_seconds: udp_message.extract_default_shutdown_seconds(),
+                    power_consumption: udp_message.extract_power_consumption()
                 }
             });
             
