@@ -150,6 +150,8 @@ class Switcher extends EventEmitter {
             if (!SwitcherUDPMessage.is_valid(raw_msg)) {
                 return; // ignoring - not a switcher broadcast message
             }
+            this.log('UDP Message:')
+            this.log(raw_msg.toString('hex'))
             var udp_message = new SwitcherUDPMessage(raw_msg);
             var device_id = udp_message.extract_device_id();
             var device_name = udp_message.extract_device_name();
@@ -382,9 +384,13 @@ class Switcher extends EventEmitter {
                     reject(err)
                     return
                 }
+                this.log('sending data')
+                this.log(data)
                 socket.write(Buffer.from(data, 'hex'));
                 socket.once('data', (data) => {
                     var result_session = data.toString('hex').substr(16, 8)  
+                    this.log('received login data:')
+                    this.log(data.toString('hex'))
                     // todo: make sure result_session exists
                     this.log('received session id: ' + result_session);
                     resolve(result_session); // returning _p_session after a successful login 
@@ -415,13 +421,13 @@ class Switcher extends EventEmitter {
                     reject(err)
                     return
                 }
-                // this.log('sending data')
-                // this.log(data)
+                this.log('sending data')
+                this.log(data)
                 socket.write(Buffer.from(data, 'hex'));
                 socket.once('data', (data) => {
-                    var result_session = data.toString('hex').substr(16, 8)  
-                    // this.log('received login data:')
-                    // this.log(data.toString('hex'))
+                    var result_session = data.toString('hex').substr(16, 8)
+                    this.log('received login data:')
+                    this.log(data.toString('hex'))
                     // todo: make sure result_session exists
                     this.log('received session id: ' + result_session);
                     resolve(result_session); // returning _p_session after a successful login 
@@ -445,6 +451,8 @@ class Switcher extends EventEmitter {
         data = this._crc_sign_full_packet_com_key(data, P_KEY);
         this.log('sending ' + Object.keys({OFF, ON})[command_type.substr(0, 1)] +  ' command');
         var socket = await this._getsocket();
+        this.log('sending data:')
+        this.log(data)
         try {
             var socket = await this._getsocket();
         } catch (err) {
@@ -453,6 +461,8 @@ class Switcher extends EventEmitter {
         }
         socket.write(Buffer.from(data, 'hex'));
         socket.once('data', (data) => {
+            this.log('data received:')
+            this.log(data.toString('hex'))
             this.emit(STATE_CHANGED_EVENT, command_type.substr(0, 1));
         });
     }
@@ -465,12 +475,12 @@ class Switcher extends EventEmitter {
         data = this._crc_sign_full_packet_com_key(data, P_KEY);
         this.log(`sending position command | ${pos}%`);
         var socket = await this._getsocket();
-        // this.log('sending data:')
-        // this.log(data)
+        this.log('sending data:')
+        this.log(data)
         socket.write(Buffer.from(data, 'hex'));
         socket.once('data', (data) => {
-            // this.log('data received:')
-            // this.log(data.toString('hex'))
+            this.log('data received:')
+            this.log(data.toString('hex'))
             this.emit(POSITION_CHANGED_EVENT, pos); // todo: add old state and new state
         });
     }
