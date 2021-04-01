@@ -1,7 +1,7 @@
 {
   "name": "switcher-js2",
-  "version": "1.1.1",
-  "description": "switcher smart water heater api (fork of @johnathanvidu)",
+  "version": "1.2.0",
+  "description": "switcher smart accessories api (fork of @johnathanvidu)",
   "main": "index.js",
   "dependencies": {
     "python-struct": "^1.1.2"
@@ -23,5 +23,5 @@
   "bugs": {
     "url": "https://github.com/nitaybz/switcher-js/issues"
   },
-  "homepage": "https://github.com/johnathanvidu/switcher-js#readme"
+  "homepage": "https://github.com/nitaybz/switcher-js#readme"
 }
