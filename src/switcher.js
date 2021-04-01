@@ -51,7 +51,7 @@ class Switcher extends EventEmitter {
         this.phone_id = '0000';
         this.device_pass = '00000000';
         this.newType = NEW_TCP_GROUP.includes(device_type)
-        this.SWITCHER_PORT = newType ? SWITCHER_TCP_PORT2 : SWITCHER_TCP_PORT;
+        this.SWITCHER_PORT = this.newType ? SWITCHER_TCP_PORT2 : SWITCHER_TCP_PORT;
         this.log = log;
         this.p_session = null;
         this.socket = null;
@@ -147,6 +147,7 @@ class Switcher extends EventEmitter {
         var proxy = new EventEmitter.EventEmitter();
         var socket = dgram.createSocket('udp4', (raw_msg, rinfo) => {
             var ipaddr = rinfo.address;
+            console.log(raw_msg.toString('hex'))
             if (!SwitcherUDPMessage.is_valid(raw_msg)) {
                 return; // ignoring - not a switcher broadcast message
             }
