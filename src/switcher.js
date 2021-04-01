@@ -147,7 +147,6 @@ class Switcher extends EventEmitter {
         var proxy = new EventEmitter.EventEmitter();
         var socket = dgram.createSocket('udp4', (raw_msg, rinfo) => {
             var ipaddr = rinfo.address;
-            console.log(raw_msg.toString('hex'))
             if (!SwitcherUDPMessage.is_valid(raw_msg)) {
                 return; // ignoring - not a switcher broadcast message
             }
