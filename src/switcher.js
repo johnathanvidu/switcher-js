@@ -150,8 +150,8 @@ class Switcher extends EventEmitter {
             if (!SwitcherUDPMessage.is_valid(raw_msg)) {
                 return; // ignoring - not a switcher broadcast message
             }
-            this.log('UDP Message:')
-            this.log(raw_msg.toString('hex'))
+            log('UDP Message:')
+            log(raw_msg.toString('hex'))
             var udp_message = new SwitcherUDPMessage(raw_msg);
             var device_id = udp_message.extract_device_id();
             var device_name = udp_message.extract_device_name();
