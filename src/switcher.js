@@ -470,6 +470,7 @@ class Switcher extends EventEmitter {
     async _run_position_command(position_command) {
         const pos = parseInt(position_command, 16)
         var p_session = await this._login2(); 
+        this.p_session = null;
         var data = "fef0580003050102" + p_session + "290401" + "000000000000000000" + this._get_time_stamp() + "00000000000000000000f0fe" + this.device_id +
                    "00" + this.phone_id + "0000" + this.device_pass + "000000000000000000000000000000000000000000000000000000" + "37010100" + position_command;
         data = this._crc_sign_full_packet_com_key(data, P_KEY);
