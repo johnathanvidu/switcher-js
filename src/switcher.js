@@ -1,5 +1,8 @@
 "use strict";
 
+const axios = require('axios');
+var FormData = require('form-data');
+const fs = require('fs').promises;
 const net = require('net');
 const dgram = require('dgram');
 const struct = require('python-struct');
@@ -10,6 +13,7 @@ const SwitcherUDPMessage = require('./udp')
 
 const P_SESSION = '00000000';
 const P_KEY = '00000000000000000000000000000000';
+const REMOTE_SET_TOKEN = 'd41d8cd98f00b204e9800998ecf8427e'
 
 const STATUS_EVENT = 'status';
 const MESSAGE_EVENT = 'message'
@@ -18,6 +22,8 @@ const ERROR_EVENT = 'error';
 const STATE_CHANGED_EVENT = 'state';
 const DURATION_CHANGED_EVENT = 'duration';
 const POSITION_CHANGED_EVENT = 'position';
+const BREEZE_CHANGE_EVENT = 'breeze'
+const BREEZE_CAPABILITIES_EVENT = 'capabilities'
 
 
 const SWITCHER_UDP_IP = "0.0.0.0";
@@ -26,12 +32,30 @@ const SWITCHER_UDP_PORT2 = 20003;
 
 const SWITCHER_TCP_PORT = 9957;
 const SWITCHER_TCP_PORT2 = 10000;
-const NEW_TCP_GROUP = ['runner', 'runner_mini'];
+const NEW_TCP_GROUP = ['runner', 'runner_mini', 'breeze'];
+const IR_SET_FILE = 'IRSet.json'
+const IR_SET_PATH = __dirname + '/../cache'
 
 const OFF = 0;
 const ON = 1;
 
 
+const breeze_dictionary = {
+    modes: {
+        'aa': 'AUTO',
+        'ad': 'DRY',
+        'aw': 'FAN',
+        'ar': 'COOL',
+        'ah': 'HEAT'
+        
+    },
+    fan_levels: {
+        'f0': 'AUTO',
+        'f1': 'LOW',
+        'f2': 'MEDIUM',
+        'f3': 'HIGH',
+    }
+}
 
 class ConnectionError extends Error {
     constructor(ip, port) {
@@ -43,7 +67,7 @@ class ConnectionError extends Error {
 
 
 class Switcher extends EventEmitter { 
-    constructor(device_id, switcher_ip, log, listen, device_type) {
+    constructor(device_id, switcher_ip, log, listen, device_type, remote) {
         super();
         this.device_id = device_id;
         this.switcher_ip = switcher_ip;
@@ -51,12 +75,16 @@ class Switcher extends EventEmitter {
         this.phone_id = '0000';
         this.device_pass = '00000000';
         this.newType = NEW_TCP_GROUP.includes(device_type)
+        this.isBreeze = device_type && device_type === 'breeze'
         this.SWITCHER_PORT = this.newType ? SWITCHER_TCP_PORT2 : SWITCHER_TCP_PORT;
         this.log = log;
         this.p_session = null;
         this.socket = null;
         if (listen)
             this.status_socket = this._hijack_status_report();
+        if (device_type === 'breeze')
+            this._get_breeze_remote(remote)
+                .then(remote => this.breeze_remote = remote)
     }
 
     static discover(log, identifier, discovery_timeout) {
@@ -100,13 +128,15 @@ class Switcher extends EventEmitter {
             var device_id = udp_message.extract_device_id();
             var device_name = udp_message.extract_device_name();
             var device_type = udp_message.extract_type();
+            if (device_type === 'breeze')
+                var remote = udp_message.extract_remote();
             if (identifier && identifier !== device_id && identifier !== device_name && identifier !== ipaddr) {
                 log(`Found ${device_name} (${ipaddr}) - Not the device we\'re looking for!`);
                 return;
             }
 
             // log(`Found ${device_name} (${ipaddr})!`);
-            proxy.emit(READY_EVENT, new Switcher(device_id, ipaddr, log, false, device_type));
+            proxy.emit(READY_EVENT, new Switcher(device_id, ipaddr, log, false, device_type, remote));
             clearTimeout(timeout);
             socket2.close();
             socket2 = null;
@@ -150,8 +180,6 @@ class Switcher extends EventEmitter {
             if (!SwitcherUDPMessage.is_valid(raw_msg)) {
                 return; // ignoring - not a switcher broadcast message
             }
-            log('UDP Message:')
-            log(raw_msg.toString('hex'))
             var udp_message = new SwitcherUDPMessage(raw_msg);
             var device_id = udp_message.extract_device_id();
             var device_name = udp_message.extract_device_name();
@@ -184,6 +212,7 @@ class Switcher extends EventEmitter {
         
         var socket2 = dgram.createSocket('udp4', (raw_msg, rinfo) => {
             var ipaddr = rinfo.address;
+            
             if (!SwitcherUDPMessage.is_valid(raw_msg)) {
                 return; // ignoring - not a switcher broadcast message
             }
@@ -194,18 +223,36 @@ class Switcher extends EventEmitter {
                 log(`Found ${device_name} (${ipaddr}) - Not the device we\'re looking for!`);
                 return;
             }
+            var device_type = udp_message.extract_type();
 
-            // log(`Found ${device_name} (${ipaddr})!`);
-            proxy.emit(MESSAGE_EVENT, {
-                device_id: device_id,
-                device_ip: ipaddr,
-                name: device_name,
-                type: udp_message.extract_type(),
-                state: {
-                    position: udp_message.extract_position(),
-                    direction: udp_message.extract_direction()
-                }
-            });
+                // log(`Found ${device_name} (${ipaddr})!`);
+            if (device_type === 'breeze')
+                proxy.emit(MESSAGE_EVENT, {
+                    device_id: device_id,
+                    device_ip: ipaddr,
+                    name: device_name,
+                    remote: udp_message.extract_remote(),
+                    type: device_type,
+                    state: {
+                        power: udp_message.extract_ac_power(),
+                        current_temp: udp_message.extract_current_temp(),
+                        target_temp: udp_message.extract_target_temp(),
+                        mode: udp_message.extract_ac_mode(),
+                        fan_level: udp_message.extract_fan_level(),
+                        swing: udp_message.extract_swing()
+                    }
+                })
+            else
+                proxy.emit(MESSAGE_EVENT, {
+                    device_id: device_id,
+                    device_ip: ipaddr,
+                    name: device_name,
+                    type: device_type,
+                    state: {
+                        position: udp_message.extract_position(),
+                        direction: udp_message.extract_direction()
+                    }
+                });
             
         });
         socket2.on('error', (error) => {
@@ -244,6 +291,46 @@ class Switcher extends EventEmitter {
         this._run_position_command(position_command);
     }
 
+    is_breeze_on() {
+        return this.status()
+            .then(status => {
+                return status.power === 'ON'
+            })
+    }
+
+    set_breeze_command(state) {
+        this.is_breeze_on()
+            .then(isOn => {
+                if (state.power === 'OFF' && !isOn) {
+                    // Do nothing
+                    this.log('already off')
+                    return null
+                }
+                let command = ''
+                if (state.power === 'OFF' && isOn) {
+                    // turn OFF
+                    this.log('turning off breeze')
+                    const IRCommand = this.remote_set.IRWaveList.find(wave => wave.Key === 'off')
+                    command = `${IRCommand.Para}|${IRCommand.HexCode}`
+                } else if (state.power === 'ON' && !isOn && this.remote_set.OnOffType) {
+                    // turn ON and set command
+                    this.log('sending on command with state:' + JSON.stringify(state))
+                    const commandKey = 'on_' + this._get_breeze_command_key(state)
+                    const IRCommand = this.remote_set.IRWaveList.find(wave => wave.Key === commandKey)
+                    command = `${IRCommand.Para}|${IRCommand.HexCode}`
+                } else {
+                    // only set command
+                    this.log('sending change state command:' + JSON.stringify(state))
+                    const commandKey = this._get_breeze_command_key(state)
+                    const IRCommand = this.remote_set.IRWaveList.find(wave => wave.Key === commandKey)
+                    command = `${IRCommand.Para}|${IRCommand.HexCode}`
+                }
+                command = "00000000" + this._ascii_to_hex(command)
+                this._run_breeze_command(command);
+
+            })
+    }
+
     async set_default_shutdown(duration=3600) {
         var auto_close = this._set_default_shutdown(duration)
         var p_session = await this._login(); 
@@ -259,30 +346,57 @@ class Switcher extends EventEmitter {
 
     }
 
-    async status(callback) {  // refactor
-        var p_session = await this._login(); 
-        var data = "fef0300002320103" + p_session + "340001000000000000000000" + this._get_time_stamp() + "00000000000000000000f0fe" + this.device_id + "00";
-        data = this._crc_sign_full_packet_com_key(data, P_KEY);
-        var socket = await this._getsocket();
-        socket.write(Buffer.from(data, 'hex'));
-        socket.once('data', (data) => {
-            var device_name = data.toString().substr(40, 32).replace(/\0/g, '');;
-            var state_hex = data.toString('hex').substr(150, 4);
-            var state = state_hex == '0000' ? OFF : ON; 
-            var b = data.toString('hex').substr(178, 8); 
-            var remaining_seconds = parseInt(b.substr(6, 2) + b.substr(4, 2) + b.substr(2, 2) + b.substr(0, 2), 16);
-            b = data.toString('hex').substr(194, 8);
-            var default_shutdown_seconds = parseInt(b.substr(6, 2) + b.substr(4, 2) + b.substr(2, 2) + b.substr(0, 2), 16);
-            b = data.toString('hex').substr(154, 4); 
-            var power_consumption = parseInt(b.substr(2, 2) + b.substr(0, 2), 16);
-            callback({
-                device_id: this.device_id,
-                power: state,
-                remaining_seconds: remaining_seconds,
-                default_shutdown_seconds: default_shutdown_seconds,
-                power_consumption: power_consumption
+    async status() {  // refactor
+        return new Promise(async (resolve, reject) => {
+            if (this.newType) {
+                var p_session = await this._login2(); 
+                var data = "fef0300003050103" + p_session + "390001000000000000000000" + this._get_time_stamp() + "00000000000000000000f0fe" + this.device_id + "00"
+            } else {
+                var p_session = await this._login();
+                var data = "fef0300002320103" + p_session + "340001000000000000000000" + this._get_time_stamp() + "00000000000000000000f0fe" + this.device_id + "00";
+            }
+            data = this._crc_sign_full_packet_com_key(data, P_KEY);
+            var socket = await this._getsocket();
+            socket.write(Buffer.from(data, 'hex'));
+            socket.once('data', (data) => {
+                try {
+                    // var device_name = data.toString().substr(40, 32).replace(/\0/g, '');
+                    if (this.isBreeze) {
+                        const data_hex = data.toString('hex')
+                        const state = {
+                            device_id: this.device_id,
+                            remote: data.toString().substr(83, 12).replace(/\0/g, ''),
+                            current_temp: parseInt( data_hex.substr(154, 2) + data_hex.substr(152, 2), 16)/10,
+                            power: data_hex.substr(156, 2) == '00' ? 'OFF' : 'ON',
+                            target_temp: parseInt(data_hex.substr(160, 2), 16),
+                            mode: SwitcherUDPMessage.get_breeze_mode(data_hex.substr(158, 2)),
+                            fan_level: SwitcherUDPMessage.get_breeze_fan_level(data_hex.substr(162, 1)),
+                            swing: data_hex.substr(162, 1) == '0' ? 'OFF' : 'ON'
+                        }
+                        resolve(state);
+                    } else {            
+                        var state_hex = data.toString('hex').substr(150, 4);
+                        var state = state_hex == '0000' ? OFF : ON; 
+                        var b = data.toString('hex').substr(178, 8); 
+                        var remaining_seconds = parseInt(b.substr(6, 2) + b.substr(4, 2) + b.substr(2, 2) + b.substr(0, 2), 16);
+                        b = data.toString('hex').substr(194, 8);
+                        var default_shutdown_seconds = parseInt(b.substr(6, 2) + b.substr(4, 2) + b.substr(2, 2) + b.substr(0, 2), 16);
+                        b = data.toString('hex').substr(154, 4); 
+                        var power_consumption = parseInt(b.substr(2, 2) + b.substr(0, 2), 16);
+                        resolve({
+                            device_id: this.device_id,
+                            power: state,
+                            remaining_seconds: remaining_seconds,
+                            default_shutdown_seconds: default_shutdown_seconds,
+                            power_consumption: power_consumption
+                        });
+                    } 
+                } catch (error) {
+                    this.log('connection rejected, error:', error)
+                    reject(error);
+                }
             });
-        });
+        })
     }
 
     close() {
@@ -356,6 +470,15 @@ class Switcher extends EventEmitter {
                         default_shutdown_seconds: udp_message.extract_default_shutdown_seconds(),
                         power_consumption: udp_message.extract_power_consumption()
                     })
+                else if (this.isBreeze)
+                    this.emit(STATUS_EVENT, {
+                        power: udp_message.extract_ac_power(),
+                        current_temp: udp_message.extract_current_temp(),
+                        target_temp: udp_message.extract_target_temp(),
+                        mode: udp_message.extract_ac_mode(),
+                        fan_level: udp_message.extract_fan_level(),
+                        swing: udp_message.extract_swing()
+                    })
                 else
                     this.emit(STATUS_EVENT, {
                         position: udp_message.extract_position(),
@@ -366,8 +489,102 @@ class Switcher extends EventEmitter {
         socket.on('error', (error) => {
             this.emit(ERROR_EVENT, new Error("status report failed. error: " + error.message)); // hoping this will keep the original stack trace
         });
-        socket.bind(!this.newType ? SWITCHER_UDP_PORT : SWITCHER_UDP_PORT2, SWITCHER_UDP_IP);
+        socket.bind((!this.newType ? SWITCHER_UDP_PORT : SWITCHER_UDP_PORT2), SWITCHER_UDP_IP);
         return socket;
+    }
+
+    async _get_breeze_remote(remote) {
+        try {
+            this.remote_set = await this._get_remote_set(remote)
+        } catch (err) {
+            this.log(`Can't get remote set for ${remote} !`)
+            this.log(err)
+            return
+        }
+
+        const capabilities = {
+            remote,
+            modes: [],
+            fan_levels: [],
+            swing: false,
+            min_temp: 100,
+            max_temp: 0
+        }
+        
+        for (const wave of this.remote_set.IRWaveList) {
+            const key = wave.Key
+            // add modes
+            const newMode = breeze_dictionary.modes[key.substr(0, 2)]
+            if ( newMode && !capabilities.modes.includes(newMode))
+                capabilities.modes.push(newMode)
+
+            // add fan levels
+            const newFanLevel = key.match(/f\d/) ? breeze_dictionary.fan_levels[key.match(/f\d/)[0]] : null
+            if ( newFanLevel && !capabilities.fan_levels.includes(newFanLevel))
+                capabilities.fan_levels.push(newFanLevel)
+                
+            // add min/max temperatures
+            const newTemp = key.substr(2, 2) ? parseInt(key.substr(2, 2)) : null
+            if ( newTemp && newTemp > capabilities.max_temp)
+                capabilities.max_temp = newTemp
+            if ( newTemp && newTemp < capabilities.min_temp)
+                capabilities.min_temp = newTemp
+
+            // swing
+            const swingAvailable = key.match(/d1/)
+            if (swingAvailable)
+                capabilities.swing = true
+        }
+        
+        this.emit(BREEZE_CAPABILITIES_EVENT, capabilities)
+        this.log('remote capabilites:' + JSON.stringify(capabilities))
+        return capabilities
+    }
+
+    async _get_remote_set(remote) {
+        return fs.readFile(`${IR_SET_PATH}/${IR_SET_FILE}`)
+            .then(set => {
+                set = JSON.parse(set)
+                if (remote && set && set.IRSetID === remote)
+                    return set
+                else {
+                    const err = `Cached IR set is different than the current remote, Getting new IR Set for ${remote}`
+                    this.log(err)
+                    throw  new Error(err)
+                }
+            })
+            .catch(err => {
+                if (err.code === 'ENOENT')
+                    this.log('IR set not found!')
+                else if (!err.message.includes('Cached IR set is different than the current remote'))
+                    this.log(err)
+                
+                this.log('getting new IR set...')
+                return this._get_udp_for_remote()
+                    .then(udp_message => {
+                        const data = new FormData();
+                        data.append('token', REMOTE_SET_TOKEN);
+                        data.append('rtps', udp_message);
+                
+                        var config = {
+                            method: 'post',
+                            url: 'https://switcher.co.il/misc/irGet/getIR.php',
+                            headers: { 
+                                ...data.getHeaders()
+                            },
+                            data : data
+                        };
+                        return axios(config)
+                            .then(response => {
+                                const set = response.data
+                                fs.mkdir(IR_SET_PATH, { recursive: true})
+                                    .then(() => fs.writeFile(`${IR_SET_PATH}/${IR_SET_FILE}`, JSON.stringify(set)))
+                                    .catch(err => this.log(err))
+                                return set
+                            })
+                    })
+            })
+
     }
 
     async _login() {
@@ -446,7 +663,7 @@ class Switcher extends EventEmitter {
 
     async _run_power_command(command_type) {
         var p_session = await this._login(); 
-        var data = "fef05d0002320102" + p_session + "340001000000000000000000" + this._get_time_stamp() + "00000000000000000000f0fe" + this.device_id +
+        var data = "fef05d0002320102" + p_session + "340001" +"000000000000000000" + this._get_time_stamp() + "00000000000000000000f0fe" + this.device_id +
                    "00" + this.phone_id + "0000" + this.device_pass + "000000000000000000000000000000000000000000000000000000000106000" + command_type;
         data = this._crc_sign_full_packet_com_key(data, P_KEY);
         this.log('sending ' + Object.keys({OFF, ON})[command_type.substr(0, 1)] +  ' command');
@@ -467,12 +684,37 @@ class Switcher extends EventEmitter {
         });
     }
 
+    async _run_breeze_command(command) {
+        if (!command)
+            return
+
+        const breeze_command =  command
+        var p_session = await this._login2(); 
+        this.p_session = null;
+        
+        var data = "fef0000003050102" + p_session + "000001" + "000000000000000000" + this._get_time_stamp() + "00000000000000000000f0fe" + this.device_id +
+                   "00" + this.phone_id + "0000" + this.device_pass + "0000000000000000000000000000000000000000000000000000003701" + this._get_command_length(breeze_command) + breeze_command;
+                   
+        data = this._set_message_length(data)
+        data = this._crc_sign_full_packet_com_key(data, P_KEY);
+        this.log(`sending breeze command | ${command}`);
+        var socket = await this._getsocket();
+        this.log('sending data:')
+        this.log(data)
+        socket.write(Buffer.from(data, 'hex'));
+        socket.once('data', (data) => {
+            this.log('data received:')
+            this.log(data.toString('hex'))
+            this.emit(BREEZE_CHANGE_EVENT, command); // todo: add old state and new state
+        });
+    }
+
     async _run_position_command(position_command) {
         const pos = parseInt(position_command, 16)
         var p_session = await this._login2(); 
         this.p_session = null;
         var data = "fef0580003050102" + p_session + "290401" + "000000000000000000" + this._get_time_stamp() + "00000000000000000000f0fe" + this.device_id +
-                   "00" + this.phone_id + "0000" + this.device_pass + "000000000000000000000000000000000000000000000000000000" + "37010100" + position_command;
+                   "00" + this.phone_id + "0000" + this.device_pass + "0000000000000000000000000000000000000000000000000000003701" + "0100" + position_command;
         data = this._crc_sign_full_packet_com_key(data, P_KEY);
         this.log(`sending position command | ${pos}%`);
         var socket = await this._getsocket();
@@ -514,6 +756,37 @@ class Switcher extends EventEmitter {
         }
         return hex
     }
+    _get_breeze_command_key(state) {
+        let command = ''
+
+        // add mode
+        command += Object.keys(breeze_dictionary.modes).find(key =>  breeze_dictionary.modes[key] === state.mode)
+        // add temp
+        command += state.target_temp
+        // add fan level
+        if (this.breeze_remote.fan_levels && this.breeze_remote.fan_levels.includes(state.fan_level))
+            command +=  `_${Object.keys(breeze_dictionary.fan_levels).find(key =>  breeze_dictionary.fan_levels[key] === state.fan_level)}`
+        // add swing
+        if (this.breeze_remote.swing && state.swing === 'ON')
+            command +=  `_d1`
+
+        return command
+    }
+    _get_udp_for_remote() {
+        return new Promise(async (resolve, reject) => {
+            var p_session = await this._login2(); 
+            var data = "fef0300003050103" + p_session + "390001000000000000000000" + this._get_time_stamp() + "00000000000000000000f0fe" + this.device_id + "00"
+            data = this._crc_sign_full_packet_com_key(data, P_KEY);
+            var socket = await this._getsocket();
+            socket.write(Buffer.from(data, 'hex'));
+            socket.once('data', (data) => {
+                resolve(data.toString('hex'));
+            });
+            socket.on('error', (error) => {
+                reject(error)
+            });
+        })
+    }
 
     _crc_sign_full_packet_com_key(p_data, p_key) {
         var crc = struct.pack('>I', crc16ccitt(Buffer.from(p_data, 'hex'), 0x1021)).toString('hex');
@@ -523,6 +796,39 @@ class Switcher extends EventEmitter {
         p_data = p_data + crc.substr(6, 2) + crc.substr(4, 2);
         return p_data
     }
+
+    _set_message_length(data) {
+        let hex = Number(Buffer.byteLength(Buffer.from(data + "00000000", "hex"))).toString(16)
+        if (hex.length < 2)
+            hex = hex + "000"
+        else if (hex.length < 3)
+            hex = hex + "00"
+        else if (hex.length < 4)
+            hex = hex + "0"
+        return "fef0" + hex + data.substr(8)
+    }
+
+    _get_command_length(command) {
+        let hex = Number(Buffer.byteLength(Buffer.from(command, "hex"))).toString(16)
+        if (hex.length < 2)
+            hex = hex + "000"
+        else if (hex.length < 3)
+            hex = hex + "00"
+        else if (hex.length < 4)
+            hex = hex + "0"
+        return hex
+    }
+
+
+    _ascii_to_hex(str) {
+        const arr1 = [];
+        for (let n = 0, l = str.length; n < l; n ++) {
+            const hex = Number(str.charCodeAt(n)).toString(16);
+            arr1.push(hex);
+        }
+        return arr1.join('');
+    }
+
 }
 
 module.exports = {

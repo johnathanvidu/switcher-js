@@ -1,5 +1,22 @@
 "use strict";
 
+// 0104173000
+
+
+const mode_commands = {
+    '01': 'AUTO',
+    '02': 'DRY',
+    '03': 'FAN',
+    '04': 'COOL',
+    '05': 'HEAT'
+}
+
+const fan_commands = {
+    '1': 'LOW',
+    '2': 'MEDIUM',
+    '3': 'HIGH',
+    '0': 'AUTO'
+}
 
 const direction_commands = {
     '0000': 'STOP',
@@ -8,29 +25,39 @@ const direction_commands = {
 }
 
 const types = {
-    'a8': 'power_plug',
-    'a1': 'v2_qca',
-    'a7': 'v2_esp',
-    '0b': 'v3',
-    '17': 'v4',
-    '0f': 'mini',
-    '01': 'runner',
-    '02': 'runner_mini'
+    '01a8': 'power_plug',
+    '01a1': 'v2_qca',
+    '01a7': 'v2_esp',
+    '030b': 'v3',
+    '0317': 'v4',
+    '030f': 'mini',
+    '0c01': 'runner',
+    '0c02': 'runner_mini',
+    '0e01': 'breeze'
 }
 
 class SwitcherUDPMessage {
     constructor(message_buffer) {
+        this.message_buffer = message_buffer
         this.data_str = message_buffer.toString();
         this.data_hex = message_buffer.toString('hex');
     }
 
+    static get_breeze_mode(hex) {
+        return mode_commands[hex] || 'COOL'
+    }
+    
+    static get_breeze_fan_level(hex) {
+        return fan_commands[hex] || 'LOW'
+    }
+
     static is_valid(message_buffer) {
         return (Buffer.isBuffer(message_buffer) && message_buffer.toString('hex').substr(0, 4) === 'fef0' && 
-            (Buffer.byteLength(message_buffer) === 165 || Buffer.byteLength(message_buffer) === 159));
+            (Buffer.byteLength(message_buffer) === 165 || Buffer.byteLength(message_buffer) === 159 || Buffer.byteLength(message_buffer) === 168));
     }
 
     extract_type() {
-        var type_hex = this.data_hex.substr(150, 2); 
+        var type_hex = this.data_hex.substr(148, 4); 
         return types[type_hex] || `unknown_${type_hex}`;
     }
 
@@ -46,6 +73,11 @@ class SwitcherUDPMessage {
 
     extract_device_name() {
         return this.data_str.substr(40, 32).replace(/\0/g, ''); // remove leftovers after the name
+    }
+
+    
+    extract_remote() {
+        return this.data_str.substr(142, 12).replace(/\0/g, ''); // remove leftovers after the name
     }
 
     extract_device_id() {
@@ -99,6 +131,36 @@ class SwitcherUDPMessage {
         return parseInt(
             position_section.substr(2, 2) + 
             position_section.substr(0, 2), 16);
+    }
+    
+    extract_current_temp() {
+        var current_temp_section = this.data_hex.substr(270, 4); 
+        return parseInt(
+            current_temp_section.substr(2, 2) + 
+            current_temp_section.substr(0, 2), 16)/10;
+    }
+    
+    extract_ac_power() {
+        return this.data_hex.substr(274, 2) == '00' ? 'OFF' : 'ON';
+    }
+
+    extract_ac_mode() {
+        var mode = this.data_hex.substr(276, 2); 
+        return mode_commands[mode] || mode;
+    }
+    
+    extract_target_temp() {
+        var target_temp_section = this.data_hex.substr(278, 2); 
+        return parseInt(target_temp_section, 16);
+    }
+
+    extract_fan_level() {
+        var fan = this.data_hex.substr(280, 1); 
+        return fan_commands[fan] || fan;
+    }
+
+    extract_swing() {
+        return this.data_hex.substr(281, 1) == '0' ? 'OFF' : 'ON';
     }
 } 
 
