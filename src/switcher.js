@@ -542,7 +542,8 @@ class Switcher extends EventEmitter {
     }
 
     async _get_remote_set(remote) {
-        return fs.readFile(`${IR_SET_PATH}/${IR_SET_FILE}`)
+        const file_path = `${IR_SET_PATH}/${this.device_id}_${IR_SET_FILE}`
+        return fs.readFile(file_path)
             .then(set => {
                 set = JSON.parse(set)
                 if (remote && set && set.IRSetID === remote)
@@ -578,7 +579,7 @@ class Switcher extends EventEmitter {
                             .then(response => {
                                 const set = response.data
                                 fs.mkdir(IR_SET_PATH, { recursive: true})
-                                    .then(() => fs.writeFile(`${IR_SET_PATH}/${IR_SET_FILE}`, JSON.stringify(set)))
+                                    .then(() => fs.writeFile(file_path, JSON.stringify(set)))
                                     .catch(err => this.log(err))
                                 return set
                             })
