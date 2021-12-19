@@ -542,49 +542,56 @@ class Switcher extends EventEmitter {
     }
 
     async _get_remote_set(remote) {
-        const file_path = `${IR_SET_PATH}/${this.device_id}_${IR_SET_FILE}`
-        return fs.readFile(file_path)
-            .then(set => {
-                set = JSON.parse(set)
-                if (remote && set && set.IRSetID === remote)
-                    return set
-                else {
-                    const err = `Cached IR set is different than the current remote, Getting new IR Set for ${remote}`
-                    this.log(err)
-                    throw  new Error(err)
-                }
-            })
-            .catch(err => {
-                if (err.code === 'ENOENT')
-                    this.log('IR set not found!')
-                else if (!err.message.includes('Cached IR set is different than the current remote'))
-                    this.log(err)
-                
-                this.log('getting new IR set...')
-                return this._get_udp_for_remote()
-                    .then(udp_message => {
-                        const data = new FormData();
-                        data.append('token', REMOTE_SET_TOKEN);
-                        data.append('rtps', udp_message);
-                
-                        var config = {
-                            method: 'post',
-                            url: 'https://switcher.co.il/misc/irGet/getIR.php',
-                            headers: { 
-                                ...data.getHeaders()
-                            },
-                            data : data
-                        };
-                        return axios(config)
-                            .then(response => {
-                                const set = response.data
-                                fs.mkdir(IR_SET_PATH, { recursive: true})
-                                    .then(() => fs.writeFile(file_path, JSON.stringify(set)))
-                                    .catch(err => this.log(err))
-                            })
-                            .finally(() => Promise.resolve(set))
-                    })
-            })
+        return new Promise(async (resolve, reject) => {
+            const file_path = `${IR_SET_PATH}/${this.device_id}_${IR_SET_FILE}`
+            fs.readFile(file_path)
+                .then(set => {
+                    set = JSON.parse(set)
+                    if (remote && set && set.IRSetID === remote)
+                        resolve(set)
+                    else {
+                        const err = `Cached IR set is different than the current remote, Getting new IR Set for ${remote}`
+                        this.log(err)
+                        throw  new Error(err)
+                    }
+                })
+                .catch(err => {
+                    if (err.code === 'ENOENT')
+                        this.log('IR set not found!')
+                    else if (!err.message.includes('Cached IR set is different than the current remote'))
+                        this.log(err)
+                    
+                    this.log('getting new IR set...')
+                    this._get_udp_for_remote()
+                        .then(udp_message => {
+                            const data = new FormData();
+                            data.append('token', REMOTE_SET_TOKEN);
+                            data.append('rtps', udp_message);
+                    
+                            var config = {
+                                method: 'post',
+                                url: 'https://switcher.co.il/misc/irGet/getIR.php',
+                                headers: { 
+                                    ...data.getHeaders()
+                                },
+                                data : data
+                            };
+                            axios(config)
+                                .then(response => {
+                                    const set = response.data
+                                    fs.mkdir(IR_SET_PATH, { recursive: true})
+                                        .then(() => fs.writeFile(file_path, JSON.stringify(set)))
+                                        .catch(err => this.log(err))
+                                        .finally(() => resolve(set))
+                                })
+                                .catch(err => {
+                                    this.log(err)
+                                    reject(err)
+                                })
+                            
+                        })
+                })
+        })
 
     }
 
