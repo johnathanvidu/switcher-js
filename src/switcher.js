@@ -581,8 +581,8 @@ class Switcher extends EventEmitter {
                                 fs.mkdir(IR_SET_PATH, { recursive: true})
                                     .then(() => fs.writeFile(file_path, JSON.stringify(set)))
                                     .catch(err => this.log(err))
-                                return set
                             })
+                            .finally(() => Promise.resolve(set))
                     })
             })
 
