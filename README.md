@@ -116,6 +116,9 @@ switcher.on('error', (error) => {
 });
 
 switcher.set_position(80);   // Set blinds position to 80%
+
+switcher.stop_runner() // stop the blinds
+
 switcher.close();     // closes any dangling connections safely
 ```
 

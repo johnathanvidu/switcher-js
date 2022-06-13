@@ -67,7 +67,7 @@ class ConnectionError extends Error {
 
 
 class Switcher extends EventEmitter { 
-    constructor(device_id, switcher_ip, log, listen, device_type, remote) {
+    constructor(device_id, switcher_ip, log, listen, device_type, remote, cache_path) {
         super();
         this.device_id = device_id;
         this.switcher_ip = switcher_ip;
@@ -83,7 +83,7 @@ class Switcher extends EventEmitter {
         if (listen)
             this.status_socket = this._hijack_status_report();
         if (device_type === 'breeze')
-            this._get_breeze_remote(remote)
+            this._get_breeze_remote(remote, cache_path)
                 .then(remote => this.breeze_remote = remote)
     }
 
@@ -291,6 +291,10 @@ class Switcher extends EventEmitter {
         this._run_position_command(position_command);
     }
 
+    stop_runner() {
+        this._run_stop_runner_command();
+    }
+
     is_breeze_on() {
         return this.status()
             .then(status => {
@@ -493,12 +497,12 @@ class Switcher extends EventEmitter {
         return socket;
     }
 
-    async _get_breeze_remote(remote) {
+    async _get_breeze_remote(remote, cache_path) {
         try {
-            this.remote_set = await this._get_remote_set(remote)
+            this.remote_set = await this._get_remote_set(remote, cache_path)
         } catch (err) {
             this.log(`Can't get remote set for ${remote} !`)
-            this.log(err)
+            this.log(err.message || err.stack || err)
             return
         }
 
@@ -541,9 +545,9 @@ class Switcher extends EventEmitter {
         return capabilities
     }
 
-    async _get_remote_set(remote) {
+    async _get_remote_set(remote, cache_path) {
         return new Promise(async (resolve, reject) => {
-            const file_path = `${IR_SET_PATH}/${this.device_id}_${IR_SET_FILE}`
+            const file_path = cache_path ? `${cache_path}/${this.device_id}_${IR_SET_FILE}` : `${IR_SET_PATH}/${this.device_id}_${IR_SET_FILE}`
             fs.readFile(file_path)
                 .then(set => {
                     set = JSON.parse(set)
@@ -579,13 +583,12 @@ class Switcher extends EventEmitter {
                             axios(config)
                                 .then(response => {
                                     const set = response.data
-                                    fs.mkdir(IR_SET_PATH, { recursive: true})
+                                    fs.mkdir(cache_path || IR_SET_PATH, { recursive: true})
                                         .then(() => fs.writeFile(file_path, JSON.stringify(set)))
                                         .catch(err => this.log(err))
                                         .finally(() => resolve(set))
                                 })
                                 .catch(err => {
-                                    this.log(err)
                                     reject(err)
                                 })
                             
@@ -733,6 +736,24 @@ class Switcher extends EventEmitter {
             this.log('data received:')
             this.log(data.toString('hex'))
             this.emit(POSITION_CHANGED_EVENT, pos); // todo: add old state and new state
+        });
+    }
+
+    async _run_stop_runner_command() {
+        var p_session = await this._login2(); 
+        this.p_session = null;
+        var data = "fef0590003050102" + p_session + "232301" + "000000000000000000" + this._get_time_stamp() + "00000000000000000000f0fe" + this.device_id + 
+                    "00" + this.phone_id + "0000" + this.device_pass + "0000000000000000000000000000000000000000000000000000003702" + "02000000"
+        data = this._crc_sign_full_packet_com_key(data, P_KEY);
+        this.log('sending stop runner command');
+        var socket = await this._getsocket();
+        this.log(data.length)
+        this.log('sending data:')
+        this.log(data.toString('hex'))
+        socket.write(Buffer.from(data, 'hex'));
+        socket.once('data', (data) => {
+            this.log('data received:')
+            this.log(data.toString('hex'))
         });
     }
 
