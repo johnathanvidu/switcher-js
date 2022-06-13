@@ -146,7 +146,7 @@ class SwitcherUDPMessage {
 
     extract_ac_mode() {
         var mode = this.data_hex.substr(276, 2); 
-        return mode_commands[mode] || mode;
+        return mode_commands[mode] || 'COOL';
     }
     
     extract_target_temp() {
@@ -156,7 +156,7 @@ class SwitcherUDPMessage {
 
     extract_fan_level() {
         var fan = this.data_hex.substr(280, 1); 
-        return fan_commands[fan] || fan;
+        return fan_commands[fan] || 'LOW';
     }
 
     extract_swing() {
