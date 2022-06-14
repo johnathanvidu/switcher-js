@@ -518,6 +518,13 @@ class Switcher extends EventEmitter {
             max_temp: 0
         }
         
+        if (!this.remote_set.IRWaveList || !this.remote_set.IRWaveList.length) {
+            this.log(`Wrong Remote, can't find commands!`)
+            this.log('Remote Set:')
+            this.log(this.remote_set)
+            return
+        }
+
         for (const wave of this.remote_set.IRWaveList) {
             const key = wave.Key
             // add modes
