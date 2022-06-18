@@ -311,24 +311,30 @@ class Switcher extends EventEmitter {
                     return null
                 }
                 let command = ''
-                let IRCommand = null
+                let IRCommand, commandKey
                 if (state.power === 'OFF' && isOn) {
                     // turn OFF
                     this.log('turning off breeze')
-                    IRCommand = this.remote_set.IRWaveList.find(wave => wave.Key === 'off')
+                    commandKey = 'off'
                 } else if (state.power === 'ON' && !isOn && this.remote_set.OnOffType) {
                     // turn ON and set command
                     this.log('sending on command with state:' + JSON.stringify(state))
-                    const commandKey = 'on_' + this._get_breeze_command_key(state)
-                    IRCommand = this.remote_set.IRWaveList.find(wave => wave.Key === commandKey)
+                    commandKey = 'on_' + this._get_breeze_command_key(state)
                 } else {
                     // only set command
                     this.log('sending change state command:' + JSON.stringify(state))
-                    const commandKey = this._get_breeze_command_key(state)
-                    IRCommand = this.remote_set.IRWaveList.find(wave => wave.Key === commandKey)
+                    commandKey = this._get_breeze_command_key(state)
                 }
+                
+                // find command in IRWaveList
+                IRCommand = this.remote_set.IRWaveList.find(wave => wave.Key === commandKey)
+
+                // if not found, find similar command that includes some of the params (e.g "on_ad" instead of "on_ad_f0")
+                if (!IRCommand)
+                    IRCommand = this.remote_set.IRWaveList.find(wave => commandKey.includes(wave.Key))
+
                 if (!IRCommand) {
-                    this.log(`ERROR: Wrong IR Command! Can't send command !!!`)
+                    this.log(`ERROR: Wrong IR Command (${commandKey})! Can't send command !!!`)
                     return
                 }
                 command = `${IRCommand.Para}|${IRCommand.HexCode}`
@@ -800,8 +806,16 @@ class Switcher extends EventEmitter {
 
         // add mode
         command += Object.keys(breeze_dictionary.modes).find(key =>  breeze_dictionary.modes[key] === state.mode)
+
         // add temp & sanitize
-        command += state.target_temp || this.breeze_remote.min_temp
+        if (['COOL', 'HEAT'].includes(state.mode)) {
+            if (state.target_temp > this.breeze_remote.max_temp)
+                command += this.breeze_remote.max_temp
+            else if (state.target_temp < this.breeze_remote.min_temp)
+                command += this.breeze_remote.min_temp
+            else command += state.target_temp || this.breeze_remote.min_temp
+        }
+            
         // add fan level
         if (this.breeze_remote.fan_levels && this.breeze_remote.fan_levels.includes(state.fan_level))
             command +=  `_${Object.keys(breeze_dictionary.fan_levels).find(key =>  breeze_dictionary.fan_levels[key] === state.fan_level)}`
