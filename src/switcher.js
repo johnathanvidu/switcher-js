@@ -40,6 +40,14 @@ const OFF = 0;
 const ON = 1;
 
 
+SEPARATED_SWING_REMOTES = [
+    "ELEC7022",
+    "ZM079055",
+    "ZM079065",
+    "ZM079049",
+    "ZM079065",
+]
+
 const breeze_dictionary = {
     modes: {
         'aa': 'AUTO',
@@ -56,7 +64,6 @@ const breeze_dictionary = {
         'f3': 'HIGH',
     }
 }
-
 class ConnectionError extends Error {
     constructor(ip, port) {
         super(`connection error: failed to connect to switcher on ip: ${ip}:${port}. please make sure it is turned on and available.`);
@@ -302,6 +309,23 @@ class Switcher extends EventEmitter {
             })
     }
 
+    set_separated_swing_commad(state) {
+        const key = state ? 'FUN_d1' : 'FUN_d0'
+
+        this.log(`sending separated swing command: ${JSON.stringify(state)} (${key})`)
+
+        // find command in IRWaveList
+        const IRCommand = this.remote_set.IRWaveList.find(wave => wave.Key === key)
+
+        if (!IRCommand) {
+            this.log(`ERROR: Wrong IR Command (${commandKey})! Can't send separaed swing command !!!`)
+            return
+        }
+        command = `${IRCommand.Para}|${IRCommand.HexCode}`
+        command = "00000000" + this._ascii_to_hex(command)
+        this._run_breeze_command(command);
+    }
+
     set_breeze_command(state) {
         this.is_breeze_on()
             .then(isOn => {
@@ -340,6 +364,10 @@ class Switcher extends EventEmitter {
                 command = `${IRCommand.Para}|${IRCommand.HexCode}`
                 command = "00000000" + this._ascii_to_hex(command)
                 this._run_breeze_command(command);
+
+                if (this.breeze_remote.separated_swing && state.swing === 'ON') {
+                    setTimeout(this.set_separated_swing_commad, 1000, true)
+                }
 
             })
     }
@@ -554,6 +582,11 @@ class Switcher extends EventEmitter {
             const swingAvailable = key.match(/d1/)
             if (swingAvailable)
                 capabilities.swing = true
+
+            if (SEPARATED_SWING_REMOTES.includes(remote)) {
+                capabilities.swing = true
+                capabilities.separated_swing = true
+            }
         }
         
         this.emit(BREEZE_CAPABILITIES_EVENT, capabilities)
@@ -819,9 +852,11 @@ class Switcher extends EventEmitter {
         // add fan level
         if (this.breeze_remote.fan_levels && this.breeze_remote.fan_levels.includes(state.fan_level))
             command +=  `_${Object.keys(breeze_dictionary.fan_levels).find(key =>  breeze_dictionary.fan_levels[key] === state.fan_level)}`
+        
         // add swing
-        if (this.breeze_remote.swing && state.swing === 'ON')
+        if (!this.breeze_remote.separated_swing && this.breeze_remote.swing && state.swing === 'ON')
             command +=  `_d1`
+
         return command
     }
     _get_udp_for_remote() {
