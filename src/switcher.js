@@ -23,6 +23,7 @@ const ERROR_EVENT = 'error';
 const STATE_CHANGED_EVENT = 'state';
 const DURATION_CHANGED_EVENT = 'duration';
 const POSITION_CHANGED_EVENT = 'position';
+const CHILD_LOCK_CHANGED_EVENT = 'lock'
 const BREEZE_CHANGE_EVENT = 'breeze'
 const BREEZE_CAPABILITIES_EVENT = 'capabilities'
 
@@ -301,6 +302,12 @@ class Switcher extends EventEmitter {
 
 	stop_runner() {
 		this._run_stop_runner_command();
+	}
+
+	
+
+	set_child_lock(lock=true) {
+		this._run_child_lock_command(lock);
 	}
 
 	is_breeze_on() {
@@ -805,6 +812,26 @@ class Switcher extends EventEmitter {
 		socket.once('data', (data) => {
 			this.log('data received:')
 			this.log(data.toString('hex'))
+		});
+	}
+
+	
+	async _run_child_lock_command(lock) {
+		var lock_command = lock ? '01' : '00'
+		let p_session = await this._login2(); 
+		this.p_session = null;
+		let data = "fef0580003050102" + p_session + "290401" + "000000000000000000" + this._get_time_stamp() + "00000000000000000000f0fe" + this.device_id +
+                   "00" + this.phone_id + "0000" + this.device_pass + "0000000000000000000000000000000000000000000000000000003707" + "0100" + lock_command;
+		data = this._crc_sign_full_packet_com_key(data, P_KEY);
+		this.log(`sending child lock to ${lock}`);
+		var socket = await this._getsocket();
+		this.log('sending data:')
+		this.log(data)
+		socket.write(Buffer.from(data, 'hex'));
+		socket.once('data', (data) => {
+			this.log('data received:')
+			this.log(data.toString('hex'))
+			this.emit(CHILD_LOCK_CHANGED_EVENT, lock); // todo: add old state and new state
 		});
 	}
 
