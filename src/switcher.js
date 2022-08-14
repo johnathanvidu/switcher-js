@@ -22,9 +22,6 @@ const READY_EVENT = 'ready';
 const ERROR_EVENT = 'error';
 const STATE_CHANGED_EVENT = 'state';
 const DURATION_CHANGED_EVENT = 'duration';
-const POSITION_CHANGED_EVENT = 'position';
-const CHILD_LOCK_CHANGED_EVENT = 'lock'
-const BREEZE_CHANGE_EVENT = 'breeze'
 const BREEZE_CAPABILITIES_EVENT = 'capabilities'
 
 
@@ -34,7 +31,7 @@ const SWITCHER_UDP_PORT2 = 20003;
 
 const SWITCHER_TCP_PORT = 9957;
 const SWITCHER_TCP_PORT2 = 10000;
-const NEW_TCP_GROUP = ['runner', 'runner_mini', 'breeze'];
+const NEW_TCP_GROUP = ['runner', 'runner_mini', 'breeze', 's11', 's12'];
 const IR_SET_FILE = 'IRSet.json'
 const IR_SET_PATH = __dirname + '/../cache'
 
@@ -234,6 +231,10 @@ class Switcher extends EventEmitter {
 			}
 			var device_type = udp_message.extract_type();
 
+			// console.log(device_type)
+			// return
+
+
 			// log(`Found ${device_name} (${ipaddr})!`);
 			if (device_type === 'breeze')
 				proxy.emit(MESSAGE_EVENT, {
@@ -251,7 +252,7 @@ class Switcher extends EventEmitter {
 						swing: udp_message.extract_swing()
 					}
 				})
-			else
+			else if (device_type.includes('runner'))
 				proxy.emit(MESSAGE_EVENT, {
 					device_id: device_id,
 					device_ip: ipaddr,
@@ -261,6 +262,44 @@ class Switcher extends EventEmitter {
 						position: udp_message.extract_position(),
 						direction: udp_message.extract_direction()
 					}
+				});
+				
+			else if (device_type === 's11')
+				proxy.emit(MESSAGE_EVENT, {
+					device_id: device_id,
+					device_ip: ipaddr,
+					name: device_name,
+					type: device_type,
+					state: {
+						light1_power: udp_message.extract_light(1),
+						light2_power: udp_message.extract_light(2),
+						runner3_position: udp_message.extract_position(3),
+						runner3_direction: udp_message.extract_direction(3)
+					}
+				});
+				
+			else if (device_type === 's12')
+				proxy.emit(MESSAGE_EVENT, {
+					device_id: device_id,
+					device_ip: ipaddr,
+					name: device_name,
+					type: device_type,
+					state: {
+						light1_power: udp_message.extract_light(1),
+						runner2_position: udp_message.extract_position(2),
+						runner2_direction: udp_message.extract_direction(2),
+						runner3_position: udp_message.extract_position(3),
+						runner3_direction: udp_message.extract_direction(3)
+					}
+				});
+			else
+				proxy.emit(MESSAGE_EVENT, {
+					device_id: device_id,
+					device_ip: ipaddr,
+					name: device_name,
+					type: device_type,
+					data_hex: udp_message.data_hex,
+					data_str: udp_message.data_str
 				});
             
 		});
@@ -295,20 +334,40 @@ class Switcher extends EventEmitter {
 		this._run_power_command(on_command);
 	}
 
-	set_position(pos=0) {
-		var position_command = this._get_hex_pos(pos)
-		this._run_position_command(position_command);
+	// set_position(pos=0) {
+	// 	var position_command = this._get_hex_pos(pos)
+	// 	this.log('Sending Position Command')
+	// 	this._run_position_command(position_command);
+	// }
+
+	stop_runner(index=0) {
+		this.log(`Sending stop command`)
+		let command = '0000'
+		command = index ? `0${index}` + command : command
+		this._run_general_command(command, '3702');
 	}
 
-	stop_runner() {
-		this._run_stop_runner_command();
+	set_child_lock(lock=false, index=0) {
+		this.log(`Sending child lock command: ${lock}`)
+		let command = lock ? '01' : '00'
+		command = index ? `0${index}` + command : command
+		this._run_general_command(command, '3707');
 	}
 
+	set_light(power=false, index=0) {
+		this.log(`Sending light power command: ${power}`)
+		let command = power ? '01' : '00'
+		command = index ? `0${index}` + command : command
+		this._run_general_command(command, '370a');
+	}
 	
-
-	set_child_lock(lock=true) {
-		this._run_child_lock_command(lock);
+	set_position(pos=0, index=0) {
+		this.log(`Sending position command: ${pos}%`)
+		let command = this._get_hex_pos(pos)
+		command = index ? `0${index}` + command : command
+		this._run_general_command(command);
 	}
+
 
 	is_breeze_on() {
 		return this.status()
@@ -331,7 +390,7 @@ class Switcher extends EventEmitter {
 		}
 		let command = `${IRCommand.Para}|${IRCommand.HexCode}`
 		command = "00000000" + this._ascii_to_hex(command)
-		this._run_breeze_command(command);
+		this._run_general_command(command);
 	}
 
 	set_breeze_command(state) {
@@ -371,7 +430,7 @@ class Switcher extends EventEmitter {
 				}
 				command = `${IRCommand.Para}|${IRCommand.HexCode}`
 				command = "00000000" + this._ascii_to_hex(command)
-				this._run_breeze_command(command);
+				this._run_general_command(command);
 
 				if (this.breeze_remote.separated_swing && state.swing === 'ON') {
 					setTimeout(this.set_separated_swing_commad, 1000, true)
@@ -529,6 +588,22 @@ class Switcher extends EventEmitter {
 						fan_level: udp_message.extract_fan_level(),
 						swing: udp_message.extract_swing()
 					})
+				else if (this.device_type === 's11')
+					this.emit(STATUS_EVENT, {
+						light1_power: udp_message.extract_light(1),
+						light2_power: udp_message.extract_light(2),
+						runner3_position: udp_message.extract_position(3),
+						runner3_direction: udp_message.extract_direction(3)
+					});
+					
+				else if (this.device_type === 's12')
+					this.emit(STATUS_EVENT, {
+						light1_power: udp_message.extract_light(1),
+						runner2_position: udp_message.extract_position(2),
+						runner2_direction: udp_message.extract_direction(2),
+						runner3_position: udp_message.extract_position(3),
+						runner3_direction: udp_message.extract_direction(3)
+					});
 				else
 					this.emit(STATUS_EVENT, {
 						position: udp_message.extract_position(),
@@ -753,20 +828,13 @@ class Switcher extends EventEmitter {
 		});
 	}
 
-	async _run_breeze_command(command) {
-		if (!command)
-			return
-
-		const breeze_command =  command
+	async _run_general_command(command, precommand="3701") {
 		let p_session = await this._login2(); 
 		this.p_session = null;
-        
-		let data = "fef0000003050102" + p_session + "000001" + "000000000000000000" + this._get_time_stamp() + "00000000000000000000f0fe" + this.device_id +
-                   "00" + this.phone_id + "0000" + this.device_pass + "0000000000000000000000000000000000000000000000000000003701" + this._get_command_length(breeze_command) + breeze_command;
-                   
+		let data = "fef0000003050102" + p_session + "000000" + "000000000000000000" + this._get_time_stamp() + "00000000000000000000f0fe" + this.device_id +
+								"00" + this.phone_id + "0000" + this.device_pass + "000000000000000000000000000000000000000000000000000000" + precommand + this._get_command_length(command) + command
 		data = this._set_message_length(data)
 		data = this._crc_sign_full_packet_com_key(data, P_KEY);
-		this.log(`sending breeze command | ${command}`);
 		var socket = await this._getsocket();
 		this.log('sending data:')
 		this.log(data)
@@ -774,67 +842,9 @@ class Switcher extends EventEmitter {
 		socket.once('data', (data) => {
 			this.log('data received:')
 			this.log(data.toString('hex'))
-			this.emit(BREEZE_CHANGE_EVENT, command); // todo: add old state and new state
 		});
 	}
-
-	async _run_position_command(position_command) {
-		const pos = parseInt(position_command, 16)
-		let p_session = await this._login2(); 
-		this.p_session = null;
-		let data = "fef0580003050102" + p_session + "290401" + "000000000000000000" + this._get_time_stamp() + "00000000000000000000f0fe" + this.device_id +
-                   "00" + this.phone_id + "0000" + this.device_pass + "0000000000000000000000000000000000000000000000000000003701" + "0100" + position_command;
-		data = this._crc_sign_full_packet_com_key(data, P_KEY);
-		this.log(`sending position command | ${pos}%`);
-		var socket = await this._getsocket();
-		this.log('sending data:')
-		this.log(data)
-		socket.write(Buffer.from(data, 'hex'));
-		socket.once('data', (data) => {
-			this.log('data received:')
-			this.log(data.toString('hex'))
-			this.emit(POSITION_CHANGED_EVENT, pos); // todo: add old state and new state
-		});
-	}
-
-	async _run_stop_runner_command() {
-		let p_session = await this._login2(); 
-		this.p_session = null;
-		let data = "fef0590003050102" + p_session + "232301" + "000000000000000000" + this._get_time_stamp() + "00000000000000000000f0fe" + this.device_id + 
-                    "00" + this.phone_id + "0000" + this.device_pass + "0000000000000000000000000000000000000000000000000000003702" + "02000000"
-		data = this._crc_sign_full_packet_com_key(data, P_KEY);
-		this.log('sending stop runner command');
-		var socket = await this._getsocket();
-		this.log(data.length)
-		this.log('sending data:')
-		this.log(data.toString('hex'))
-		socket.write(Buffer.from(data, 'hex'));
-		socket.once('data', (data) => {
-			this.log('data received:')
-			this.log(data.toString('hex'))
-		});
-	}
-
 	
-	async _run_child_lock_command(lock) {
-		var lock_command = lock ? '01' : '00'
-		let p_session = await this._login2(); 
-		this.p_session = null;
-		let data = "fef0580003050102" + p_session + "290401" + "000000000000000000" + this._get_time_stamp() + "00000000000000000000f0fe" + this.device_id +
-                   "00" + this.phone_id + "0000" + this.device_pass + "0000000000000000000000000000000000000000000000000000003707" + "0100" + lock_command;
-		data = this._crc_sign_full_packet_com_key(data, P_KEY);
-		this.log(`sending child lock to ${lock}`);
-		var socket = await this._getsocket();
-		this.log('sending data:')
-		this.log(data)
-		socket.write(Buffer.from(data, 'hex'));
-		socket.once('data', (data) => {
-			this.log('data received:')
-			this.log(data.toString('hex'))
-			this.emit(CHILD_LOCK_CHANGED_EVENT, lock); // todo: add old state and new state
-		});
-	}
-
 	_get_time_stamp() {
 		var time_in_seconds = Math.round(new Date().getTime() / 1000);
 		return struct.pack('<I', parseInt(time_in_seconds)).toString('hex');
@@ -915,23 +925,15 @@ class Switcher extends EventEmitter {
 
 	_set_message_length(data) {
 		let hex = Number(Buffer.byteLength(Buffer.from(data + "00000000", "hex"))).toString(16)
-		if (hex.length < 2)
-			hex = hex + "000"
-		else if (hex.length < 3)
-			hex = hex + "00"
-		else if (hex.length < 4)
-			hex = hex + "0"
+		hex = hex.padStart(4, "0")
+		hex = hex.substr(2, 2) + hex.substr(0, 2);
 		return "fef0" + hex + data.substr(8)
 	}
 
 	_get_command_length(command) {
 		let hex = Number(Buffer.byteLength(Buffer.from(command, "hex"))).toString(16)
-		if (hex.length < 2)
-			hex = hex + "000"
-		else if (hex.length < 3)
-			hex = hex + "00"
-		else if (hex.length < 4)
-			hex = hex + "0"
+		hex = hex.padStart(4, "0")
+		hex = hex.substr(2, 2) + hex.substr(0, 2);
 		return hex
 	}
 

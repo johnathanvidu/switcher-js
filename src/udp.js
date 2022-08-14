@@ -33,7 +33,9 @@ const types = {
 	'030f': 'mini',
 	'0c01': 'runner',
 	'0c02': 'runner_mini',
-	'0e01': 'breeze'
+	'0e01': 'breeze',
+	'0f01': 's11',
+	'0f02': 's12'
 }
 
 class SwitcherUDPMessage {
@@ -52,8 +54,10 @@ class SwitcherUDPMessage {
 	}
 
 	static is_valid(message_buffer) {
-		return (Buffer.isBuffer(message_buffer) && message_buffer.toString('hex').substr(0, 4) === 'fef0' && 
-            (Buffer.byteLength(message_buffer) === 165 || Buffer.byteLength(message_buffer) === 159 || Buffer.byteLength(message_buffer) === 168));
+		const isValid = (Buffer.isBuffer(message_buffer) && message_buffer.toString('hex').substr(0, 4) === 'fef0') ;
+		// && (Buffer.byteLength(message_buffer) === 165 || Buffer.byteLength(message_buffer) === 159 || Buffer.byteLength(message_buffer) === 168));
+
+		return isValid
 	}
 
 	extract_type() {
@@ -121,18 +125,28 @@ class SwitcherUDPMessage {
 		return(a + "." + b + "." + c + "." + d);
 	}
     
-	extract_direction() {
-		var direction = this.data_hex.substr(274, 4); 
+	extract_direction(index) {
+		index --
+		const command_index = 274 + (index ? index*32 : 0)
+		var direction = this.data_hex.substr(command_index, 4); 
 		return direction_commands[direction];
 	}
     
-	extract_position() {
-		var position_section = this.data_hex.substr(270, 4); 
+	extract_position(index) {
+		index --
+		const command_index = 270 + (index ? index*32 : 0)
+		var position_section = this.data_hex.substr(command_index, 4); 
 		return parseInt(
 			position_section.substr(2, 2) + 
             position_section.substr(0, 2), 16);
 	}
-    
+
+	extract_light(index) {
+		index --
+		const command_index = 270 + (index ? index*32 : 0)
+		return this.data_hex.substr(command_index, 2) == '00' ? 'OFF' : 'ON';
+	}
+
 	extract_current_temp() {
 		var current_temp_section = this.data_hex.substr(270, 4); 
 		return parseInt(
