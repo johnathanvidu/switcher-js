@@ -260,7 +260,8 @@ class Switcher extends EventEmitter {
 					type: device_type,
 					state: {
 						position: udp_message.extract_position(),
-						direction: udp_message.extract_direction()
+						direction: udp_message.extract_direction(),
+						child_lock: udp_message.extract_child_lock()
 					}
 				});
 				
@@ -610,10 +611,11 @@ class Switcher extends EventEmitter {
 						runner3_direction: udp_message.extract_direction(3),
 						runner3_child_lock: udp_message.extract_child_lock(3)
 					});
-				else
+				else // if (device_type.includes('runner'))
 					this.emit(STATUS_EVENT, {
 						position: udp_message.extract_position(),
-						direction: udp_message.extract_direction()
+						direction: udp_message.extract_direction(),
+						child_lock: udp_message.extract_child_lock()
 					})
 			}
 		});
