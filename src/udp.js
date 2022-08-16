@@ -81,7 +81,9 @@ class SwitcherUDPMessage {
 
     
 	extract_remote() {
-		return this.data_str.substr(142, 8).replace(/[^0-9a-zA-Z_\s]/g, '').replace(/\0/g, ''); // remove leftovers after the name
+		// console.log(this.data_str.substr(130, 30))
+		return this.data_str.substr(138, 16).match(/[A-Z0-9]{8}/)[0].replace(/\0/g, ''); // remove leftovers after the name
+		// return this.data_str.substr(130, 20).replace(/([^0-9A-Z].*)+([A-Z0-9]{8})+([^0-9A-Z].*)/, '$2').replace(/\0/g, ''); // remove leftovers after the name
 	}
 
 	extract_device_id() {
