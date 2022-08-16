@@ -125,20 +125,24 @@ class SwitcherUDPMessage {
 		return(a + "." + b + "." + c + "." + d);
 	}
     
+	extract_position(index) {
+		index --
+		const command_index = 270 + (index ? index*32 : 0)
+		var position_section = this.data_hex.substr(command_index, 2); 
+		return parseInt(position_section.substr(0, 2), 16);
+	}
+    
+	extract_child_lock(index) {
+		index --
+		const command_index = 272 + (index ? index*32 : 0)
+		return this.data_hex.substr(command_index, 2) == '00' ? 'OFF' : 'ON';
+	}
+
 	extract_direction(index) {
 		index --
 		const command_index = 274 + (index ? index*32 : 0)
 		var direction = this.data_hex.substr(command_index, 4); 
 		return direction_commands[direction];
-	}
-    
-	extract_position(index) {
-		index --
-		const command_index = 270 + (index ? index*32 : 0)
-		var position_section = this.data_hex.substr(command_index, 4); 
-		return parseInt(
-			position_section.substr(2, 2) + 
-            position_section.substr(0, 2), 16);
 	}
 
 	extract_light(index) {

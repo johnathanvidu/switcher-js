@@ -274,7 +274,8 @@ class Switcher extends EventEmitter {
 						light1_power: udp_message.extract_light(1),
 						light2_power: udp_message.extract_light(2),
 						runner3_position: udp_message.extract_position(3),
-						runner3_direction: udp_message.extract_direction(3)
+						runner3_direction: udp_message.extract_direction(3),
+						runner3_child_lock: udp_message.extract_child_lock(3)
 					}
 				});
 				
@@ -288,8 +289,10 @@ class Switcher extends EventEmitter {
 						light1_power: udp_message.extract_light(1),
 						runner2_position: udp_message.extract_position(2),
 						runner2_direction: udp_message.extract_direction(2),
+						runner2_child_lock: udp_message.extract_child_lock(2),
 						runner3_position: udp_message.extract_position(3),
-						runner3_direction: udp_message.extract_direction(3)
+						runner3_direction: udp_message.extract_direction(3),
+						runner3_child_lock: udp_message.extract_child_lock(3)
 					}
 				});
 			else
@@ -593,7 +596,8 @@ class Switcher extends EventEmitter {
 						light1_power: udp_message.extract_light(1),
 						light2_power: udp_message.extract_light(2),
 						runner3_position: udp_message.extract_position(3),
-						runner3_direction: udp_message.extract_direction(3)
+						runner3_direction: udp_message.extract_direction(3),
+						runner3_child_lock: udp_message.extract_child_lock(3)
 					});
 					
 				else if (this.device_type === 's12')
@@ -601,8 +605,10 @@ class Switcher extends EventEmitter {
 						light1_power: udp_message.extract_light(1),
 						runner2_position: udp_message.extract_position(2),
 						runner2_direction: udp_message.extract_direction(2),
+						runner2_child_lock: udp_message.extract_child_lock(2),
 						runner3_position: udp_message.extract_position(3),
-						runner3_direction: udp_message.extract_direction(3)
+						runner3_direction: udp_message.extract_direction(3),
+						runner3_child_lock: udp_message.extract_child_lock(3)
 					});
 				else
 					this.emit(STATUS_EVENT, {
