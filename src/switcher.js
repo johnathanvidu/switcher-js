@@ -1,20 +1,17 @@
 /* eslint-disable no-async-promise-executor */
 "use strict";
-
-const axios = require('axios');
-var FormData = require('form-data');
-const fs = require('fs').promises;
 const net = require('net');
 const dgram = require('dgram');
 const struct = require('python-struct');
 const EventEmitter = require('events').EventEmitter;
+var AdmZip = require("adm-zip");
+var zip = new AdmZip(__dirname + "/t.zip");
 
 const crc16ccitt = require('./crc').crc16ccitt;
 const SwitcherUDPMessage = require('./udp')
 
 const P_SESSION = '00000000';
 const P_KEY = '00000000000000000000000000000000';
-const REMOTE_SET_TOKEN = 'd41d8cd98f00b204e9800998ecf8427e'
 
 const STATUS_EVENT = 'status';
 const MESSAGE_EVENT = 'message'
@@ -32,8 +29,6 @@ const SWITCHER_UDP_PORT2 = 20003;
 const SWITCHER_TCP_PORT = 9957;
 const SWITCHER_TCP_PORT2 = 10000;
 const NEW_TCP_GROUP = ['runner', 'runner_mini', 'breeze', 's11', 's12'];
-const IR_SET_FILE = 'IRSet.json'
-const IR_SET_PATH = __dirname + '/../cache'
 
 const OFF = 0;
 const ON = 1;
@@ -73,7 +68,7 @@ class ConnectionError extends Error {
 
 
 class Switcher extends EventEmitter { 
-	constructor(device_id, switcher_ip, log, listen, device_type, remote, cache_path) {
+	constructor(device_id, switcher_ip, log, listen, device_type, remote) {
 		super();
 		this.device_id = device_id;
 		this.switcher_ip = switcher_ip;
@@ -89,7 +84,7 @@ class Switcher extends EventEmitter {
 		if (listen)
 			this.status_socket = this._hijack_status_report();
 		if (device_type === 'breeze')
-			this._get_breeze_remote(remote, cache_path)
+			this._get_breeze_remote(remote)
 				.then(remote => this.breeze_remote = remote)
 	}
 
@@ -236,7 +231,7 @@ class Switcher extends EventEmitter {
 
 
 			// log(`Found ${device_name} (${ipaddr})!`);
-			if (device_type === 'breeze')
+			if (device_type === 'breeze') {
 				proxy.emit(MESSAGE_EVENT, {
 					device_id: device_id,
 					device_ip: ipaddr,
@@ -252,6 +247,7 @@ class Switcher extends EventEmitter {
 						swing: udp_message.extract_swing()
 					}
 				})
+			}
 			else if (device_type.includes('runner'))
 				proxy.emit(MESSAGE_EVENT, {
 					device_id: device_id,
@@ -392,7 +388,7 @@ class Switcher extends EventEmitter {
 			this.log(`ERROR: Wrong IR Command (${key})! Can't send separaed swing command !!!`)
 			return
 		}
-		let command = `${IRCommand.Para}|${IRCommand.HexCode}`
+		let command = `${IRCommand.HexCode}`
 		command = "00000000" + this._ascii_to_hex(command)
 		this._run_general_command(command);
 	}
@@ -432,7 +428,7 @@ class Switcher extends EventEmitter {
 					this.log(`ERROR: Wrong IR Command (${commandKey})! Can't send command !!!`)
 					return
 				}
-				command = `${IRCommand.Para}|${IRCommand.HexCode}`
+				command = `${IRCommand.HexCode}`
 				command = "00000000" + this._ascii_to_hex(command)
 				this._run_general_command(command);
 
@@ -478,7 +474,7 @@ class Switcher extends EventEmitter {
 						const data_hex = data.toString('hex')
 						const state = {
 							device_id: this.device_id,
-							remote: data.toString().substr(83, 12).replace(/\0/g, ''),
+							remote: data.toString().substr(84, 8).replace(/\0/g, ''),
 							current_temp: parseInt( data_hex.substr(154, 2) + data_hex.substr(152, 2), 16)/10,
 							power: data_hex.substr(156, 2) == '00' ? 'OFF' : 'ON',
 							target_temp: parseInt(data_hex.substr(160, 2), 16),
@@ -626,9 +622,9 @@ class Switcher extends EventEmitter {
 		return socket;
 	}
 
-	async _get_breeze_remote(remote, cache_path) {
+	async _get_breeze_remote(remote) {
 		try {
-			this.remote_set = await this._get_remote_set(remote, cache_path)
+			this.remote_set = await this._get_remote_set(remote)
 		} catch (err) {
 			this.log(`Can't get remote set for ${remote} !`)
 			this.log(err.message || err.stack || err)
@@ -686,57 +682,19 @@ class Switcher extends EventEmitter {
 		return capabilities
 	}
 
-	async _get_remote_set(remote, cache_path) {
+	async _get_remote_set(remote) {
 		return new Promise(async (resolve, reject) => {
-			const file_path = cache_path ? `${cache_path}/${this.device_id}_${IR_SET_FILE}` : `${IR_SET_PATH}/${this.device_id}_${IR_SET_FILE}`
-			fs.readFile(file_path)
-				.then(set => {
-					set = JSON.parse(set)
-					if (remote && set && set.IRSetID === remote)
-						resolve(set)
-					else {
-						const err = `Cached IR set is different than the current remote, Getting new IR Set for ${remote}`
-						this.log(err)
-						throw  new Error(err)
-					}
-				})
-				.catch(err => {
-					if (err.code === 'ENOENT')
-						this.log('IR set not found!')
-					else if (!err.message.includes('Cached IR set is different than the current remote'))
-						this.log(err)
-                    
-					this.log('getting new IR set...')
-					this._get_udp_for_remote()
-						.then(udp_message => {
-							const data = new FormData();
-							data.append('token', REMOTE_SET_TOKEN);
-							data.append('rtps', udp_message);
-                    
-							var config = {
-								method: 'post',
-								url: 'https://switcher.co.il/misc/irGet/getIR.php',
-								headers: { 
-									...data.getHeaders()
-								},
-								data : data
-							};
-							axios(config)
-								.then(response => {
-									const set = response.data
-									fs.mkdir(cache_path || IR_SET_PATH, { recursive: true})
-										.then(() => fs.writeFile(file_path, JSON.stringify(set)))
-										.catch(err => this.log(err))
-										.finally(() => resolve(set))
-								})
-								.catch(err => {
-									reject(err)
-								})
-                            
-						})
-				})
-		})
+		
+			const zipEntry = zip.getEntries()[0]
+			let IRWaves = zipEntry.getData().toString("utf8")
+			IRWaves = JSON.parse(IRWaves)
 
+			const remote_waves = IRWaves.find(remote_set => remote_set.IRSetID === remote)
+			if (remote_waves)
+				resolve(remote_waves)
+			else
+				reject(new Error(`Can't find remote ${remote}`))
+		})
 	}
 
 	async _login() {

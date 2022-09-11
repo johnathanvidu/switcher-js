@@ -2,7 +2,6 @@
 
 // 0104173000
 
-
 const mode_commands = {
 	'01': 'AUTO',
 	'02': 'DRY',
@@ -81,9 +80,7 @@ class SwitcherUDPMessage {
 
     
 	extract_remote() {
-		// console.log(this.data_str.substr(130, 30))
-		return this.data_str.substr(138, 16).match(/[A-Z0-9]{8}/)[0].replace(/\0/g, ''); // remove leftovers after the name
-		// return this.data_str.substr(130, 20).replace(/([^0-9A-Z].*)+([A-Z0-9]{8})+([^0-9A-Z].*)/, '$2').replace(/\0/g, ''); // remove leftovers after the name
+		return this.data_str.match(/(?<=_[A-Z0-9]{4}.*)([A-Z0-9]{8})/)[0]
 	}
 
 	extract_device_id() {
@@ -183,7 +180,5 @@ class SwitcherUDPMessage {
 		return this.data_hex.substr(281, 1) == '0' ? 'OFF' : 'ON';
 	}
 } 
-
-
 
 module.exports = SwitcherUDPMessage

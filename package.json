@@ -4,8 +4,7 @@
   "description": "switcher smart accessories api (fork of @johnathanvidu)",
   "main": "index.js",
   "dependencies": {
-    "axios": "^0.27.2",
-    "form-data": "^4.0.0",
+    "adm-zip": "^0.5.9",
     "python-struct": "^1.1.2"
   },
   "devDependencies": {
