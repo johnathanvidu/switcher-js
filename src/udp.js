@@ -80,7 +80,11 @@ class SwitcherUDPMessage {
 
     
 	extract_remote() {
-		return this.data_str.match(/(?<=_[A-Z0-9]{4}.*)([A-Z0-9]{8})/)[0]
+		const remote = this.data_str.match(/(?<=_[A-Z0-9]{4}.*)([A-Z0-9]{8})/)
+		if (remote && remote.length)
+			return remote[0]
+		else
+			return 'UNKNOWN'
 	}
 
 	extract_device_id() {

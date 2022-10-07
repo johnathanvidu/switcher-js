@@ -388,7 +388,7 @@ class Switcher extends EventEmitter {
 			this.log(`ERROR: Wrong IR Command (${key})! Can't send separaed swing command !!!`)
 			return
 		}
-		let command = `${IRCommand.HexCode}`
+		let command = `${IRCommand.Para}|${IRCommand.HexCode}`
 		command = "00000000" + this._ascii_to_hex(command)
 		this._run_general_command(command);
 	}
@@ -428,7 +428,7 @@ class Switcher extends EventEmitter {
 					this.log(`ERROR: Wrong IR Command (${commandKey})! Can't send command !!!`)
 					return
 				}
-				command = `${IRCommand.HexCode}`
+				command = `${IRCommand.Para}|${IRCommand.HexCode}`
 				command = "00000000" + this._ascii_to_hex(command)
 				this._run_general_command(command);
 
