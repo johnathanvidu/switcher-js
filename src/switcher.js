@@ -25,6 +25,10 @@ const BREEZE_CAPABILITIES_EVENT = 'capabilities'
 const SWITCHER_UDP_IP = "0.0.0.0";
 const SWITCHER_UDP_PORT = 20002;
 const SWITCHER_UDP_PORT2 = 20003;
+const SWITCHER_UDP_PORT3 = 10002;
+const SWITCHER_UDP_PORT4 = 10003;
+
+const LISTENING_PORTS = [SWITCHER_UDP_PORT, SWITCHER_UDP_PORT2, SWITCHER_UDP_PORT3, SWITCHER_UDP_PORT4]
 
 const SWITCHER_TCP_PORT = 9957;
 const SWITCHER_TCP_PORT2 = 10000;
@@ -91,235 +95,181 @@ class Switcher extends EventEmitter {
 	static discover(log, identifier, discovery_timeout) {
 		var proxy = new EventEmitter.EventEmitter();
 		var timeout = null
-		var socket = dgram.createSocket('udp4', (raw_msg, rinfo) => {
-			var ipaddr = rinfo.address;
-			if (!SwitcherUDPMessage.is_valid(raw_msg)) {
-				return; // ignoring - not a switcher broadcast message
-			}
-			var udp_message = new SwitcherUDPMessage(raw_msg);
-			var device_id = udp_message.extract_device_id();
-			var device_name = udp_message.extract_device_name();
-			var device_type = udp_message.extract_type();
-			if (identifier && identifier !== device_id && identifier !== device_name && identifier !== ipaddr) {
-				log(`Found ${device_name} (${ipaddr}) - Not the device we're looking for!`);
-				return;
-			}
+		const sockets = []
 
-			// log(`Found ${device_name} (${ipaddr})!`);
-			proxy.emit(READY_EVENT, new Switcher(device_id, ipaddr, log, false, device_type));
-			clearTimeout(timeout);
-			socket.close();
-			socket = null;
-            
-		});
-		socket.on('error', (error) => {
-			proxy.emit(ERROR_EVENT, error);
-			clearTimeout(timeout);
-			socket.close();
-			socket = null;
-		});
-		socket.bind(SWITCHER_UDP_PORT, SWITCHER_UDP_IP);
+		LISTENING_PORTS.forEach(switcher_port => {
+			var socket = dgram.createSocket('udp4', (raw_msg, rinfo) => {
+				var ipaddr = rinfo.address;
+				if (!SwitcherUDPMessage.is_valid(raw_msg)) {
+					return; // ignoring - not a switcher broadcast message
+				}
+				var udp_message = new SwitcherUDPMessage(raw_msg);
+				var device_id = udp_message.extract_device_id();
+				var device_name = udp_message.extract_device_name();
+				var device_type = udp_message.extract_type();
+				if (device_type === 'breeze')
+					var remote = udp_message.extract_remote();
+				if (identifier && identifier !== device_id && identifier !== device_name && identifier !== ipaddr) {
+					log(`Found ${device_name} (${ipaddr}) - Not the device we're looking for!`);
+					return;
+				}
+	
+				// log(`Found ${device_name} (${ipaddr})!`);
+				proxy.emit(READY_EVENT, new Switcher(device_id, ipaddr, log, false, device_type, remote));
+				clearTimeout(timeout);
+				socket.close();
+				socket = null;
+							
+			});
+			socket.on('error', (error) => {
+				proxy.emit(ERROR_EVENT, error);
+				clearTimeout(timeout);
+				socket.close();
+				socket = null;
+			});
+			socket.bind(switcher_port, SWITCHER_UDP_IP);
+			sockets.push(socket)
 
-		var socket2 = dgram.createSocket('udp4', (raw_msg, rinfo) => {
-			var ipaddr = rinfo.address;
-			if (!SwitcherUDPMessage.is_valid(raw_msg)) {
-				return; // ignoring - not a switcher broadcast message
-			}
-			var udp_message = new SwitcherUDPMessage(raw_msg);
-			var device_id = udp_message.extract_device_id();
-			var device_name = udp_message.extract_device_name();
-			var device_type = udp_message.extract_type();
-			if (device_type === 'breeze')
-				var remote = udp_message.extract_remote();
-			if (identifier && identifier !== device_id && identifier !== device_name && identifier !== ipaddr) {
-				log(`Found ${device_name} (${ipaddr}) - Not the device we're looking for!`);
-				return;
-			}
-
-			// log(`Found ${device_name} (${ipaddr})!`);
-			proxy.emit(READY_EVENT, new Switcher(device_id, ipaddr, log, false, device_type, remote));
-			clearTimeout(timeout);
-			socket2.close();
-			socket2 = null;
-            
-		});
-		socket2.on('error', (error) => {
-			proxy.emit(ERROR_EVENT, error);
-			clearTimeout(timeout);
-			socket2.close();
-			socket2 = null;
-		});
-		socket2.bind(SWITCHER_UDP_PORT2, SWITCHER_UDP_IP);
+		})
 
 		if (discovery_timeout);
 		timeout = setTimeout(() => {
-			log(`stopping discovery, closing socket`);
-			socket.close();
-			socket = null;
-			socket2.close();
-			socket2 = null;
+			log(`stopping discovery, closing sockets`);
+			sockets.forEach(socket => {
+				socket.close();
+				socket = null;
+			})
 		}, discovery_timeout*1000);
 
 		proxy.close = () => {
 			log('closing discover socket');
-			if (socket) {
+			sockets.forEach(socket => {
 				socket.close();
-				log('discovery socket is closed');
-			}
-			if (socket2) {
-				socket2.close();
-				log('discovery socket2 is closed');
-			}
+			})
 		}
 		return proxy;
 	}
 
 	static listen(log, identifier) {
 		var proxy = new EventEmitter.EventEmitter();
-		var socket = dgram.createSocket('udp4', (raw_msg, rinfo) => {
-			var ipaddr = rinfo.address;
-			if (!SwitcherUDPMessage.is_valid(raw_msg)) {
-				return; // ignoring - not a switcher broadcast message
-			}
-			var udp_message = new SwitcherUDPMessage(raw_msg);
-			var device_id = udp_message.extract_device_id();
-			var device_name = udp_message.extract_device_name();
-			if (identifier && identifier !== device_id && identifier !== device_name && identifier !== ipaddr) {
-				log(`Found ${device_name} (${ipaddr}) - Not the device we're looking for!`);
-				return;
-			}
+		
+		const sockets = []
 
-			// log(`Found ${device_name} (${ipaddr})!`);
-			proxy.emit(MESSAGE_EVENT, {
-				device_id: device_id,
-				device_ip: ipaddr,
-				name: device_name,
-				type: udp_message.extract_type(),
-				state: {
-					power: udp_message.extract_switch_state(),
-					remaining_seconds: udp_message.extract_shutdown_remaining_seconds(),
-					default_shutdown_seconds: udp_message.extract_default_shutdown_seconds(),
-					power_consumption: udp_message.extract_power_consumption()
+		LISTENING_PORTS.forEach(switcher_port => {
+			var socket = dgram.createSocket('udp4', (raw_msg, rinfo) => {
+				var ipaddr = rinfo.address;
+				if (!SwitcherUDPMessage.is_valid(raw_msg)) {
+					return; // ignoring - not a switcher broadcast message
 				}
+				var udp_message = new SwitcherUDPMessage(raw_msg);
+				var device_id = udp_message.extract_device_id();
+				var device_name = udp_message.extract_device_name();
+				if (identifier && identifier !== device_id && identifier !== device_name && identifier !== ipaddr) {
+					log(`Found ${device_name} (${ipaddr}) - Not the device we're looking for!`);
+					return;
+				}
+
+				var device_type = udp_message.extract_type();
+				if (['power_plug', 'v2_qca', 'v2_esp', 'v3', 'v4', 'mini'].includes(device_type)) {
+					proxy.emit(MESSAGE_EVENT, {
+						device_id: device_id,
+						device_ip: ipaddr,
+						name: device_name,
+						type: udp_message.extract_type(),
+						state: {
+							power: udp_message.extract_switch_state(),
+							remaining_seconds: udp_message.extract_shutdown_remaining_seconds(),
+							default_shutdown_seconds: udp_message.extract_default_shutdown_seconds(),
+							power_consumption: udp_message.extract_power_consumption()
+						}
+					});
+				} else if (device_type === 'breeze') {
+					proxy.emit(MESSAGE_EVENT, {
+						device_id: device_id,
+						device_ip: ipaddr,
+						name: device_name,
+						remote: udp_message.extract_remote(),
+						type: device_type,
+						state: {
+							power: udp_message.extract_ac_power(),
+							current_temp: udp_message.extract_current_temp(),
+							target_temp: udp_message.extract_target_temp(),
+							mode: udp_message.extract_ac_mode(),
+							fan_level: udp_message.extract_fan_level(),
+							swing: udp_message.extract_swing()
+						}
+					})
+				}
+				else if (device_type.includes('runner'))
+					proxy.emit(MESSAGE_EVENT, {
+						device_id: device_id,
+						device_ip: ipaddr,
+						name: device_name,
+						type: device_type,
+						state: {
+							position: udp_message.extract_position(),
+							direction: udp_message.extract_direction(),
+							child_lock: udp_message.extract_child_lock()
+						}
+					});
+					
+				else if (device_type === 's11')
+					proxy.emit(MESSAGE_EVENT, {
+						device_id: device_id,
+						device_ip: ipaddr,
+						name: device_name,
+						type: device_type,
+						state: {
+							light1_power: udp_message.extract_light(1),
+							light2_power: udp_message.extract_light(2),
+							runner3_position: udp_message.extract_position(3),
+							runner3_direction: udp_message.extract_direction(3),
+							runner3_child_lock: udp_message.extract_child_lock(3)
+						}
+					});
+					
+				else if (device_type === 's12')
+					proxy.emit(MESSAGE_EVENT, {
+						device_id: device_id,
+						device_ip: ipaddr,
+						name: device_name,
+						type: device_type,
+						state: {
+							light1_power: udp_message.extract_light(1),
+							runner2_position: udp_message.extract_position(2),
+							runner2_direction: udp_message.extract_direction(2),
+							runner2_child_lock: udp_message.extract_child_lock(2),
+							runner3_position: udp_message.extract_position(3),
+							runner3_direction: udp_message.extract_direction(3),
+							runner3_child_lock: udp_message.extract_child_lock(3)
+						}
+					});
+				else
+					proxy.emit(MESSAGE_EVENT, {
+						device_id: device_id,
+						device_ip: ipaddr,
+						name: device_name,
+						type: device_type,
+						data_hex: udp_message.data_hex,
+						data_str: udp_message.data_str
+					});
+
+			})
+
+			socket.on('error', (error) => {
+				proxy.emit(ERROR_EVENT, error);
+				socket.close();
+				socket = null;
 			});
-            
-		});
-		socket.on('error', (error) => {
-			proxy.emit(ERROR_EVENT, error);
-			socket.close();
-			socket = null;
-		});
-		socket.bind(SWITCHER_UDP_PORT, SWITCHER_UDP_IP);
-        
-		var socket2 = dgram.createSocket('udp4', (raw_msg, rinfo) => {
-			var ipaddr = rinfo.address;
-            
-			if (!SwitcherUDPMessage.is_valid(raw_msg)) {
-				return; // ignoring - not a switcher broadcast message
-			}
-			var udp_message = new SwitcherUDPMessage(raw_msg);
-			var device_id = udp_message.extract_device_id();
-			var device_name = udp_message.extract_device_name();
-			if (identifier && identifier !== device_id && identifier !== device_name && identifier !== ipaddr) {
-				log(`Found ${device_name} (${ipaddr}) - Not the device we're looking for!`);
-				return;
-			}
-			var device_type = udp_message.extract_type();
-
-			// console.log(device_type)
-			// return
-
-
-			// log(`Found ${device_name} (${ipaddr})!`);
-			if (device_type === 'breeze') {
-				proxy.emit(MESSAGE_EVENT, {
-					device_id: device_id,
-					device_ip: ipaddr,
-					name: device_name,
-					remote: udp_message.extract_remote(),
-					type: device_type,
-					state: {
-						power: udp_message.extract_ac_power(),
-						current_temp: udp_message.extract_current_temp(),
-						target_temp: udp_message.extract_target_temp(),
-						mode: udp_message.extract_ac_mode(),
-						fan_level: udp_message.extract_fan_level(),
-						swing: udp_message.extract_swing()
-					}
-				})
-			}
-			else if (device_type.includes('runner'))
-				proxy.emit(MESSAGE_EVENT, {
-					device_id: device_id,
-					device_ip: ipaddr,
-					name: device_name,
-					type: device_type,
-					state: {
-						position: udp_message.extract_position(),
-						direction: udp_message.extract_direction(),
-						child_lock: udp_message.extract_child_lock()
-					}
-				});
-				
-			else if (device_type === 's11')
-				proxy.emit(MESSAGE_EVENT, {
-					device_id: device_id,
-					device_ip: ipaddr,
-					name: device_name,
-					type: device_type,
-					state: {
-						light1_power: udp_message.extract_light(1),
-						light2_power: udp_message.extract_light(2),
-						runner3_position: udp_message.extract_position(3),
-						runner3_direction: udp_message.extract_direction(3),
-						runner3_child_lock: udp_message.extract_child_lock(3)
-					}
-				});
-				
-			else if (device_type === 's12')
-				proxy.emit(MESSAGE_EVENT, {
-					device_id: device_id,
-					device_ip: ipaddr,
-					name: device_name,
-					type: device_type,
-					state: {
-						light1_power: udp_message.extract_light(1),
-						runner2_position: udp_message.extract_position(2),
-						runner2_direction: udp_message.extract_direction(2),
-						runner2_child_lock: udp_message.extract_child_lock(2),
-						runner3_position: udp_message.extract_position(3),
-						runner3_direction: udp_message.extract_direction(3),
-						runner3_child_lock: udp_message.extract_child_lock(3)
-					}
-				});
-			else
-				proxy.emit(MESSAGE_EVENT, {
-					device_id: device_id,
-					device_ip: ipaddr,
-					name: device_name,
-					type: device_type,
-					data_hex: udp_message.data_hex,
-					data_str: udp_message.data_str
-				});
-            
-		});
-		socket2.on('error', (error) => {
-			proxy.emit(ERROR_EVENT, error);
-			socket2.close();
-			socket2 = null;
-		});
-		socket2.bind(SWITCHER_UDP_PORT2, SWITCHER_UDP_IP);
+			socket.bind(switcher_port, SWITCHER_UDP_IP);
+			sockets.push(socket)
+		})
 
 		proxy.close = () => {
-			log('closing listener socket');
-			if (socket) {
+			log('closing discover socket');
+			sockets.forEach(socket => {
 				socket.close();
-				log('listener socket is closed');
-			}
-			if (socket2) {
-				socket2.close();
-				log('listener socket2 is closed');
-			}
+			})
 		}
 		return proxy;
 	}
