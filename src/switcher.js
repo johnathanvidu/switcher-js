@@ -1,5 +1,6 @@
 /* eslint-disable no-async-promise-executor */
 "use strict";
+const { he } = require('./tok');
 const net = require('net');
 const dgram = require('dgram');
 const struct = require('python-struct');
@@ -53,7 +54,7 @@ const breeze_dictionary = {
 		'aw': 'FAN',
 		'ar': 'COOL',
 		'ah': 'HEAT'
-        
+
 	},
 	fan_levels: {
 		'f0': 'AUTO',
@@ -71,13 +72,15 @@ class ConnectionError extends Error {
 }
 
 
-class Switcher extends EventEmitter { 
-	constructor(device_id, switcher_ip, log, listen, device_type, remote) {
+class Switcher extends EventEmitter {
+	constructor(device_id, switcher_ip, log, listen, device_type, remote, token) {
 		super();
 		this.device_id = device_id;
 		this.switcher_ip = switcher_ip;
 		this.device_type = device_type || 'unknown';
 		this.phone_id = '0000';
+		if (token)
+			this.token = he(token);
 		this.device_pass = '00000000';
 		this.newType = NEW_TCP_GROUP.includes(device_type)
 		this.isBreeze = device_type && device_type === 'breeze'
@@ -113,13 +116,13 @@ class Switcher extends EventEmitter {
 					log(`Found ${device_name} (${ipaddr}) - Not the device we're looking for!`);
 					return;
 				}
-	
+
 				// log(`Found ${device_name} (${ipaddr})!`);
 				proxy.emit(READY_EVENT, new Switcher(device_id, ipaddr, log, false, device_type, remote));
 				clearTimeout(timeout);
 				socket.close();
 				socket = null;
-							
+
 			});
 			socket.on('error', (error) => {
 				proxy.emit(ERROR_EVENT, error);
@@ -139,7 +142,7 @@ class Switcher extends EventEmitter {
 				socket.close();
 				socket = null;
 			})
-		}, discovery_timeout*1000);
+		}, discovery_timeout * 1000);
 
 		proxy.close = () => {
 			log('closing discover socket');
@@ -152,7 +155,7 @@ class Switcher extends EventEmitter {
 
 	static listen(log, identifier) {
 		var proxy = new EventEmitter.EventEmitter();
-		
+
 		const sockets = []
 
 		LISTENING_PORTS.forEach(switcher_port => {
@@ -212,7 +215,7 @@ class Switcher extends EventEmitter {
 							child_lock: udp_message.extract_child_lock()
 						}
 					});
-					
+
 				else if (device_type === 's11')
 					proxy.emit(MESSAGE_EVENT, {
 						device_id: device_id,
@@ -227,7 +230,7 @@ class Switcher extends EventEmitter {
 							runner3_child_lock: udp_message.extract_child_lock(3)
 						}
 					});
-					
+
 				else if (device_type === 's12')
 					proxy.emit(MESSAGE_EVENT, {
 						device_id: device_id,
@@ -279,39 +282,33 @@ class Switcher extends EventEmitter {
 		this._run_power_command(off_command);
 	}
 
-	turn_on(duration=0) {
-		var on_command = ON +'00' + this._timer_value(duration);
+	turn_on(duration = 0) {
+		var on_command = ON + '00' + this._timer_value(duration);
 		this._run_power_command(on_command);
 	}
 
-	// set_position(pos=0) {
-	// 	var position_command = this._get_hex_pos(pos)
-	// 	this.log('Sending Position Command')
-	// 	this._run_position_command(position_command);
-	// }
-
-	stop_runner(index=0) {
+	stop_runner(index = 0) {
 		this.log(`Sending stop command`)
 		let command = '0000'
 		command = index ? `0${index}` + command : command
 		this._run_general_command(command, '3702');
 	}
 
-	set_child_lock(lock=false, index=0) {
+	set_child_lock(lock = false, index = 0) {
 		this.log(`Sending child lock command: ${lock}`)
 		let command = lock ? '01' : '00'
 		command = index ? `0${index}` + command : command
 		this._run_general_command(command, '3707');
 	}
 
-	set_light(power=false, index=0) {
+	set_light(power = false, index = 0) {
 		this.log(`Sending light power command: ${power}`)
 		let command = power ? '01' : '00'
 		command = index ? `0${index}` + command : command
 		this._run_general_command(command, '370a');
 	}
-	
-	set_position(pos=0, index=0) {
+
+	set_position(pos = 0, index = 0) {
 		this.log(`Sending position command: ${pos}%`)
 		let command = this._get_hex_pos(pos)
 		command = index ? `0${index}` + command : command
@@ -326,7 +323,7 @@ class Switcher extends EventEmitter {
 			})
 	}
 
-	set_separated_swing_commad(state) {
+	set_separated_swing_command(state) {
 		const key = state ? 'FUN_d1' : 'FUN_d0'
 
 		this.log(`sending separated swing command: ${JSON.stringify(state)} (${key})`)
@@ -335,7 +332,7 @@ class Switcher extends EventEmitter {
 		const IRCommand = this.remote_set.IRWaveList.find(wave => wave.Key === key)
 
 		if (!IRCommand) {
-			this.log(`ERROR: Wrong IR Command (${key})! Can't send separaed swing command !!!`)
+			this.log(`ERROR: Wrong IR Command (${key})! Can't send separated swing command !!!`)
 			return
 		}
 		let command = `${IRCommand.Para}|${IRCommand.HexCode}`
@@ -366,7 +363,7 @@ class Switcher extends EventEmitter {
 					this.log('sending change state command:' + JSON.stringify(state))
 					commandKey = this._get_breeze_command_key(state)
 				}
-                
+
 				// find command in IRWaveList
 				IRCommand = this.remote_set.IRWaveList.find(wave => wave.Key === commandKey)
 
@@ -383,17 +380,17 @@ class Switcher extends EventEmitter {
 				this._run_general_command(command);
 
 				if (this.breeze_remote.separated_swing && state.swing === 'ON') {
-					setTimeout(this.set_separated_swing_commad, 1000, true)
+					setTimeout(this.set_separated_swing_command, 1000, true)
 				}
 
 			})
 	}
 
-	async set_default_shutdown(duration=3600) {
+	async set_default_shutdown(duration = 3600) {
 		var auto_close = this._set_default_shutdown(duration)
-		let p_session = await this._login(); 
+		let p_session = await this._login();
 		let data = "fef05b0002320102" + p_session + "340001000000000000000000" + this._get_time_stamp() + "00000000000000000000f0fe" + this.device_id +
-                   "00" + this.phone_id + "0000" + this.device_pass + "00000000000000000000000000000000000000000000000000000000040400" + auto_close;
+			"00" + this.phone_id + "0000" + this.device_pass + "00000000000000000000000000000000000000000000000000000000040400" + auto_close;
 		data = this._crc_sign_full_packet_com_key(data, P_KEY);
 		this.log(`sending default_shutdown command | ${duration} seconds`);
 		var socket = await this._getsocket();
@@ -408,7 +405,7 @@ class Switcher extends EventEmitter {
 		return new Promise(async (resolve, reject) => {
 			let data, p_session
 			if (this.newType) {
-				p_session = await this._login2(); 
+				p_session = await this._login2();
 				data = "fef0300003050103" + p_session + "390001000000000000000000" + this._get_time_stamp() + "00000000000000000000f0fe" + this.device_id + "00"
 			} else {
 				p_session = await this._login();
@@ -425,7 +422,7 @@ class Switcher extends EventEmitter {
 						const state = {
 							device_id: this.device_id,
 							remote: data.toString().substr(84, 8).replace(/\0/g, ''),
-							current_temp: parseInt( data_hex.substr(154, 2) + data_hex.substr(152, 2), 16)/10,
+							current_temp: parseInt(data_hex.substr(154, 2) + data_hex.substr(152, 2), 16) / 10,
 							power: data_hex.substr(156, 2) == '00' ? 'OFF' : 'ON',
 							target_temp: parseInt(data_hex.substr(160, 2), 16),
 							mode: SwitcherUDPMessage.get_breeze_mode(data_hex.substr(158, 2)),
@@ -433,14 +430,14 @@ class Switcher extends EventEmitter {
 							swing: data_hex.substr(162, 1) == '0' ? 'OFF' : 'ON'
 						}
 						resolve(state);
-					} else {            
+					} else {
 						var state_hex = data.toString('hex').substr(150, 4);
-						var state = state_hex == '0000' ? OFF : ON; 
-						var b = data.toString('hex').substr(178, 8); 
+						var state = state_hex == '0000' ? OFF : ON;
+						var b = data.toString('hex').substr(178, 8);
 						var remaining_seconds = parseInt(b.substr(6, 2) + b.substr(4, 2) + b.substr(2, 2) + b.substr(0, 2), 16);
 						b = data.toString('hex').substr(194, 8);
 						var default_shutdown_seconds = parseInt(b.substr(6, 2) + b.substr(4, 2) + b.substr(2, 2) + b.substr(0, 2), 16);
-						b = data.toString('hex').substr(154, 4); 
+						b = data.toString('hex').substr(154, 4);
 						var power_consumption = parseInt(b.substr(2, 2) + b.substr(0, 2), 16);
 						resolve({
 							device_id: this.device_id,
@@ -449,7 +446,7 @@ class Switcher extends EventEmitter {
 							default_shutdown_seconds: default_shutdown_seconds,
 							power_consumption: power_consumption
 						});
-					} 
+					}
 				} catch (error) {
 					this.log('connection rejected, error:', error)
 					reject(error);
@@ -478,15 +475,15 @@ class Switcher extends EventEmitter {
 		try {
 			var socket = await this._connect(this.SWITCHER_PORT, this.switcher_ip);
 			socket.on('error', (error) => {
-				this.log('gloabal error event:', error);
+				this.log('global error event:', error);
 			});
 			socket.on('close', (had_error) => {
-				this.log('gloabal close event:', had_error);
+				this.log('global close event:', had_error);
 			});
 			this.socket = socket;
 			return socket;
 		}
-		catch(error) {
+		catch (error) {
 			this.socket = null;
 			this.emit(ERROR_EVENT, new ConnectionError(this.switcher_ip, this.SWITCHER_PORT));
 			throw error;
@@ -546,7 +543,7 @@ class Switcher extends EventEmitter {
 						runner3_direction: udp_message.extract_direction(3),
 						runner3_child_lock: udp_message.extract_child_lock(3)
 					});
-					
+
 				else if (this.device_type === 's12')
 					this.emit(STATUS_EVENT, {
 						light1_power: udp_message.extract_light(1),
@@ -589,7 +586,7 @@ class Switcher extends EventEmitter {
 			min_temp: 100,
 			max_temp: 0
 		}
-        
+
 		if (!this.remote_set.IRWaveList || !this.remote_set.IRWaveList.length) {
 			this.log(`Wrong Remote, can't find commands!`)
 			this.log('Remote Set:')
@@ -601,19 +598,19 @@ class Switcher extends EventEmitter {
 			const key = wave.Key
 			// add modes
 			const newMode = breeze_dictionary.modes[key.substr(0, 2)]
-			if ( newMode && !capabilities.modes.includes(newMode))
+			if (newMode && !capabilities.modes.includes(newMode))
 				capabilities.modes.push(newMode)
 
 			// add fan levels
 			const newFanLevel = key.match(/f\d/) ? breeze_dictionary.fan_levels[key.match(/f\d/)[0]] : null
-			if ( newFanLevel && !capabilities.fan_levels.includes(newFanLevel))
+			if (newFanLevel && !capabilities.fan_levels.includes(newFanLevel))
 				capabilities.fan_levels.push(newFanLevel)
-                
+
 			// add min/max temperatures
 			const newTemp = key.substr(2, 2) ? parseInt(key.substr(2, 2)) : null
-			if ( newTemp && newTemp > capabilities.max_temp)
+			if (newTemp && newTemp > capabilities.max_temp)
 				capabilities.max_temp = newTemp
-			if ( newTemp && newTemp < capabilities.min_temp)
+			if (newTemp && newTemp < capabilities.min_temp)
 				capabilities.min_temp = newTemp
 
 			// swing
@@ -626,15 +623,15 @@ class Switcher extends EventEmitter {
 				capabilities.separated_swing = true
 			}
 		}
-        
+
 		this.emit(BREEZE_CAPABILITIES_EVENT, capabilities)
-		this.log('remote capabilites:' + JSON.stringify(capabilities))
+		this.log('remote capabilities:' + JSON.stringify(capabilities))
 		return capabilities
 	}
 
 	async _get_remote_set(remote) {
 		return new Promise(async (resolve, reject) => {
-		
+
 			const zipEntry = zip.getEntries()[0]
 			let IRWaves = zipEntry.getData().toString("utf8")
 			IRWaves = JSON.parse(IRWaves)
@@ -651,45 +648,8 @@ class Switcher extends EventEmitter {
 		if (this.p_session) return this.p_session;
 		try {
 			this.p_session = await new Promise(async (resolve, reject) => {
-				let data = "fef052000232a100" + P_SESSION + "340001000000000000000000"  + this._get_time_stamp() + "00000000000000000000f0fe1c00" + 
-                           this.phone_id + "0000" + this.device_pass + "00000000000000000000000000000000000000000000000000000000";
-				data = this._crc_sign_full_packet_com_key(data, P_KEY);
-				this.log("login...");
-				try {
-					var socket = await this._getsocket();
-				} catch (err) {
-					reject(err)
-					return
-				}
-				this.log('sending data')
-				this.log(data)
-				socket.write(Buffer.from(data, 'hex'));
-				socket.once('data', (data) => {
-					var result_session = data.toString('hex').substr(16, 8)  
-					this.log('received login data:')
-					this.log(data.toString('hex'))
-					// todo: make sure result_session exists
-					this.log('received session id: ' + result_session);
-					resolve(result_session); // returning _p_session after a successful login 
-				});
-				this.socket.once('error', (error) => {
-					reject(error);
-				});
-			});
-		}
-		catch (error) {
-			this.log('login failed due to an error', error);
-			this.emit(ERROR_EVENT, new Error(`login failed due to an error: ${error.message}`));
-		}
-		return this.p_session;
-	}
-    
-	async _login2() {
-		if (this.p_session) return this.p_session;
-		try {
-			this.p_session = await new Promise(async (resolve, reject) => {
-				let data = "fef030000305a600" + P_SESSION + "ff0301000000" + this.phone_id + "00000000" + this._get_time_stamp() + "00000000000000000000f0fe" + 
-                        this.device_id + "00";
+				let data = "fef052000232a100" + P_SESSION + "340001000000000000000000" + this._get_time_stamp() + "00000000000000000000f0fe1c00" +
+					this.phone_id + "0000" + this.device_pass + "00000000000000000000000000000000000000000000000000000000";
 				data = this._crc_sign_full_packet_com_key(data, P_KEY);
 				this.log("login...");
 				try {
@@ -707,7 +667,7 @@ class Switcher extends EventEmitter {
 					this.log(data.toString('hex'))
 					// todo: make sure result_session exists
 					this.log('received session id: ' + result_session);
-					resolve(result_session); // returning _p_session after a successful login 
+					resolve(result_session); // returning _p_session after a successful login
 				});
 				this.socket.once('error', (error) => {
 					reject(error);
@@ -721,12 +681,98 @@ class Switcher extends EventEmitter {
 		return this.p_session;
 	}
 
+	async _login2() {
+		if (this.p_session) return this.p_session;
+		try {
+			this.p_session = await new Promise(async (resolve, reject) => {
+				let data = "fef030000305a600" + P_SESSION + "ff0301000000" + this.phone_id + "00000000" + this._get_time_stamp() + "00000000000000000000f0fe" +
+					this.device_id + "00";
+				data = this._crc_sign_full_packet_com_key(data, P_KEY);
+				this.log("login...");
+				try {
+					var socket = await this._getsocket();
+				} catch (err) {
+					reject(err)
+					return
+				}
+				this.log('sending data')
+				this.log(data)
+				socket.write(Buffer.from(data, 'hex'));
+				socket.once('data', (data) => {
+					var result_session = data.toString('hex').substr(16, 8)
+					this.log('received login data:')
+					this.log(data.toString('hex'))
+					// todo: make sure result_session exists
+					this.log('received session id: ' + result_session);
+					resolve(result_session); // returning _p_session after a successful login
+				});
+				this.socket.once('error', (error) => {
+					reject(error);
+				});
+			});
+		}
+		catch (error) {
+			this.log('login failed due to an error', error);
+			this.emit(ERROR_EVENT, new Error(`login failed due to an error: ${error.message}`));
+		}
+		return this.p_session;
+	}
+
+	async _login3() {
+		if (this.p_session) return this.p_session;
+		try {
+			this.p_session = await new Promise(async (resolve, reject) => {
+				let data1 = "fef030000305a600" + P_SESSION + "ff0301000000" +"00"+ this.token + "00" + this._get_time_stamp() + "00000000000000000000f0fe" + this.device_id + "00";
+				data1 = this._crc_sign_full_packet_com_key(data1, P_KEY);
+				let data2 = "fef053000305a100" + P_SESSION + "f50301000000" + this.device_id+ "000000" + this._get_time_stamp() + "00000000000000000000f0fe" +"0000" + this.token + "000000000000000000000000000000000000000000000000000000000000000001"
+				data2 = this._crc_sign_full_packet_com_key(data2, P_KEY);
+				this.log("login1...");
+				try {
+					var socket = await this._getsocket();
+				} catch (err) {
+					reject(err)
+					return
+				}
+				this.log('sending data1')
+				this.log(data1)
+				socket.write(Buffer.from(data1, 'hex'));
+				socket.once('data', (data1) => {
+					var result_session = data1.toString('hex').substr(16, 8)
+					this.log('received login data1:')
+					this.log(data1.toString('hex'))
+					// todo: make sure result_session exists
+					this.log('received session id: ' + result_session);
+					// send second packet after receiving response to first packet
+					this.log('sending data2')
+					this.log(data2)
+					socket.write(Buffer.from(data2, 'hex'));
+					socket.once('data', (data2) => {
+						this.log('received login data2:')
+						this.log(data2.toString('hex'))
+						this.log('received session id: ' + result_session);
+						resolve(result_session); // returning _p_session after a successful login
+					});
+				});
+				this.socket.once('error', (error) => {
+					reject(error);
+				});
+			});
+		}
+		catch (error) {
+			this.log('login failed due to an error', error);
+			this.emit(ERROR_EVENT, new Error(`login failed due to an error: ${error.message}`));
+		}
+		return this.p_session;
+	}
+
+
+
 	async _run_power_command(command_type) {
-		let p_session = await this._login(); 
-		let data = "fef05d0002320102" + p_session + "340001" +"000000000000000000" + this._get_time_stamp() + "00000000000000000000f0fe" + this.device_id +
-                   "00" + this.phone_id + "0000" + this.device_pass + "000000000000000000000000000000000000000000000000000000000106000" + command_type;
+		let p_session = await this._login();
+		let data = "fef05d0002320102" + p_session + "340001" + "000000000000000000" + this._get_time_stamp() + "00000000000000000000f0fe" + this.device_id +
+			"00" + this.phone_id + "0000" + this.device_pass + "000000000000000000000000000000000000000000000000000000000106000" + command_type;
 		data = this._crc_sign_full_packet_com_key(data, P_KEY);
-		this.log('sending ' + Object.keys({OFF, ON})[command_type.substr(0, 1)] +  ' command');
+		this.log('sending ' + Object.keys({ OFF, ON })[command_type.substr(0, 1)] + ' command');
 		let socket = await this._getsocket();
 		this.log('sending data:')
 		this.log(data)
@@ -744,11 +790,20 @@ class Switcher extends EventEmitter {
 		});
 	}
 
-	async _run_general_command(command, precommand="3701") {
-		let p_session = await this._login2(); 
-		this.p_session = null;
-		let data = "fef0000003050102" + p_session + "000000" + "000000000000000000" + this._get_time_stamp() + "00000000000000000000f0fe" + this.device_id +
-								"00" + this.phone_id + "0000" + this.device_pass + "000000000000000000000000000000000000000000000000000000" + precommand + this._get_command_length(command) + command
+	async _run_general_command(command, precommand = "3701") {
+		let data, p_session
+		if(this.token && this.device_type !== 'breeze'){
+			p_session = await this._login3();
+			this.p_session = null;
+			data = "fef0000003050102" + p_session + "000000" + "000000000000000000" + this._get_time_stamp() + "00000000000000000000f0fe" + this.device_id + 
+				"00" + this.token + this.device_pass + "000000000000000000000000000000000000000000000000000000" + precommand + this._get_command_length(command + "00000000") + command + "00000000"
+		} else {
+			p_session = await this._login2();
+			this.p_session = null;
+			data = "fef0000003050102" + p_session + "000000" + "000000000000000000" + this._get_time_stamp() + "00000000000000000000f0fe" + this.device_id +
+				"00" + this.phone_id + "0000" + this.device_pass + "000000000000000000000000000000000000000000000000000000" + precommand + this._get_command_length(command) + command
+		}
+
 		data = this._set_message_length(data)
 		data = this._crc_sign_full_packet_com_key(data, P_KEY);
 		var socket = await this._getsocket();
@@ -760,7 +815,7 @@ class Switcher extends EventEmitter {
 			this.log(data.toString('hex'))
 		});
 	}
-	
+
 	_get_time_stamp() {
 		var time_in_seconds = Math.round(new Date().getTime() / 1000);
 		return struct.pack('<I', parseInt(time_in_seconds)).toString('hex');
@@ -781,8 +836,8 @@ class Switcher extends EventEmitter {
 			seconds = 86340
 		} else return struct.pack('<I', seconds).toString('hex');
 	}
-    
-	_get_hex_pos(pos=0) {
+
+	_get_hex_pos(pos = 0) {
 		var hex = Number(pos).toString(16);
 		if (hex.length < 2) {
 			hex = "0" + hex;
@@ -793,7 +848,7 @@ class Switcher extends EventEmitter {
 		let command = ''
 
 		// add mode
-		command += Object.keys(breeze_dictionary.modes).find(key =>  breeze_dictionary.modes[key] === state.mode)
+		command += Object.keys(breeze_dictionary.modes).find(key => breeze_dictionary.modes[key] === state.mode)
 
 		// add temp & sanitize
 		if (['COOL', 'HEAT'].includes(state.mode)) {
@@ -803,20 +858,20 @@ class Switcher extends EventEmitter {
 				command += this.breeze_remote.min_temp
 			else command += state.target_temp || this.breeze_remote.min_temp
 		}
-            
+
 		// add fan level
 		if (this.breeze_remote.fan_levels && this.breeze_remote.fan_levels.includes(state.fan_level))
-			command +=  `_${Object.keys(breeze_dictionary.fan_levels).find(key =>  breeze_dictionary.fan_levels[key] === state.fan_level)}`
-        
+			command += `_${Object.keys(breeze_dictionary.fan_levels).find(key => breeze_dictionary.fan_levels[key] === state.fan_level)}`
+
 		// add swing
 		if (!this.breeze_remote.separated_swing && this.breeze_remote.swing && state.swing === 'ON')
-			command +=  `_d1`
+			command += `_d1`
 
 		return command
 	}
 	_get_udp_for_remote() {
 		return new Promise(async (resolve, reject) => {
-			let p_session = await this._login2(); 
+			let p_session = await this._login2();
 			let data = "fef0300003050103" + p_session + "390001000000000000000000" + this._get_time_stamp() + "00000000000000000000f0fe" + this.device_id + "00"
 			data = this._crc_sign_full_packet_com_key(data, P_KEY);
 			var socket = await this._getsocket();
@@ -856,7 +911,7 @@ class Switcher extends EventEmitter {
 
 	_ascii_to_hex(str) {
 		const arr1 = [];
-		for (let n = 0, l = str.length; n < l; n ++) {
+		for (let n = 0, l = str.length; n < l; n++) {
 			const hex = Number(str.charCodeAt(n)).toString(16);
 			arr1.push(hex);
 		}

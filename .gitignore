@@ -108,3 +108,5 @@ test2.js
 test.js
 
 cache/
+
+.DS_Store
