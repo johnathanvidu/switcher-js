@@ -792,7 +792,7 @@ class Switcher extends EventEmitter {
 
 	async _run_general_command(command, precommand = "3701") {
 		let data, p_session
-		if(this.token && this.device_type !== 'breeze'){
+		if(this.token && (this.device_type === 's11' || this.device_type === 's12')){
 			p_session = await this._login3();
 			this.p_session = null;
 			data = "fef0000003050102" + p_session + "000000" + "000000000000000000" + this._get_time_stamp() + "00000000000000000000f0fe" + this.device_id + 
