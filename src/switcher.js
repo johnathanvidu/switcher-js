@@ -33,7 +33,7 @@ const LISTENING_PORTS = [SWITCHER_UDP_PORT, SWITCHER_UDP_PORT2, SWITCHER_UDP_POR
 
 const SWITCHER_TCP_PORT = 9957;
 const SWITCHER_TCP_PORT2 = 10000;
-const NEW_TCP_GROUP = ['runner', 'runner_mini', 'breeze', 's11', 's12'];
+const OLD_TCP_GROUP = ['power_plug', 'v2_qca', 'v2_esp', 'v3', 'v4', 'mini'];
 
 const OFF = 0;
 const ON = 1;
@@ -82,7 +82,7 @@ class Switcher extends EventEmitter {
 		if (token)
 			this.token = he(token);
 		this.device_pass = '00000000';
-		this.newType = NEW_TCP_GROUP.includes(device_type)
+		this.newType = !OLD_TCP_GROUP.includes(device_type)
 		this.isBreeze = device_type && device_type === 'breeze'
 		this.SWITCHER_PORT = this.newType ? SWITCHER_TCP_PORT2 : SWITCHER_TCP_PORT;
 		this.log = log;
@@ -248,7 +248,7 @@ class Switcher extends EventEmitter {
 						}
 					});
 
-				else if (/^sl0\d$/.test(device_type)) {
+				else if (/^sl(mini)?0\d$/.test(device_type)) {
 					const light_status = {
 						device_id: device_id,
 						device_ip: ipaddr,
@@ -573,7 +573,7 @@ class Switcher extends EventEmitter {
 						runner3_child_lock: udp_message.extract_child_lock(3)
 					});
 
-				else if (/^sl0\d$/.test(this.device_type)) {
+				else if (/^sl(mini)?0\d$/.test(this.device_type)) {
 					const light_status = {
 						light1_power: udp_message.extract_light(1)
 					}

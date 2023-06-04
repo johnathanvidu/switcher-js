@@ -37,7 +37,9 @@ const types = {
 	'0f02': 's12',
 	'0f04': 'sl01',
 	'0f05': 'sl02',
-	'0f06': 'sl03'
+	'0f06': 'sl03',
+	'0f07': 'slmini01',
+	'0f08': 'slmini02'
 }
 
 class SwitcherUDPMessage {
