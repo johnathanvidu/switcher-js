@@ -248,7 +248,7 @@ class Switcher extends EventEmitter {
 						}
 					});
 
-				else if (device_type.include('sl')) {
+				else if (/^sl0\d$/.test(device_type)) {
 					const light_status = {
 						device_id: device_id,
 						device_ip: ipaddr,
@@ -573,7 +573,7 @@ class Switcher extends EventEmitter {
 						runner3_child_lock: udp_message.extract_child_lock(3)
 					});
 
-				else if (this.device_type.include('sl')) {
+				else if (/^sl0\d$/.test(this.device_type)) {
 					const light_status = {
 						light1_power: udp_message.extract_light(1)
 					}
