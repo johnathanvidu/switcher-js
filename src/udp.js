@@ -34,7 +34,10 @@ const types = {
 	'0c02': 'runner_mini',
 	'0e01': 'breeze',
 	'0f01': 's11',
-	'0f02': 's12'
+	'0f02': 's12',
+	'0f04': 'sl01',
+	'0f05': 'sl02',
+	'0f06': 'sl03'
 }
 
 class SwitcherUDPMessage {

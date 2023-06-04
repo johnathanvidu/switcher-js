@@ -3,11 +3,19 @@
 *Fork of [@johnathanvidu JS implementation](https://github.com/johnathanvidu/switcher-js)*
 
 switcher-js is a native nodejs library for controling [Switcher](https://switcher.co.il/)  smart home accessories - water heater, sockets, and blinds.<br/><br/>
-It is a native javascript port of a wonderful python script (can be found [here](https://github.com/NightRang3r/Switcher-V2-Python)) created as a result of the extensive work which has been done by Aviad Golan ([@AviadGolan](https://twitter.com/AviadGolan)) and Shai rod ([@NightRang3r](https://twitter.com/NightRang3r)).<br/>
+It is a native javascript port of a wonderful python script (can be found [here](https://github.com/NightRang3r/Switcher-V2-Python)) created as a result of the extensive work which has been done by Aviad Golan ([@AviadGolan](https://twitter.com/AviadGolan)) and Shai rod ([@NightRang3r](https://twitter.com/NightRang3r)).
+
 It is a work in progress and there is still a lot of work left to do.
 
-I built it according to my specific needs and my specific device. If any issue arises, please feel free to open an issue and I'll do my best to help.<br/>
-Current supported devices known to work with switcher-js:<br/>
+I built it according to my specific needs and my specific device. If any issue arises, please feel free to open an issue and I'll do my best to help.
+
+Current supported devices known to work with switcher-js:
+
+- **Switcher Lights SL03**
+- **Switcher Lights SL02**
+- **Switcher Lights SL01**
+- **Switcher Runner S12**
+- **Switcher Runner S11**
 - **Switcher Runner Mini**
 - **Switcher Runner**
 - **Switcher V4**
@@ -15,7 +23,6 @@ Current supported devices known to work with switcher-js:<br/>
 - **Switcher V3**: (Switcher touch) - Firmware **V1.51**
 - **Switcher V2**: Firmware **3.21** (Based on ESP chipset) 
 - **Switcher V2**: Firmware**72.32** (Qualcomm chipset)
-- 
 
 ## Installation
 Use [npm](https://www.npmjs.com/) to install switcher-js.

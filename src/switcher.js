@@ -247,6 +247,24 @@ class Switcher extends EventEmitter {
 							runner3_child_lock: udp_message.extract_child_lock(3)
 						}
 					});
+
+				else if (device_type.include('sl')) {
+					const light_status = {
+						device_id: device_id,
+						device_ip: ipaddr,
+						name: device_name,
+						type: device_type,
+						state: {
+							light1_power: udp_message.extract_light(1)
+						}
+					}
+					if (parseInt(device_type.replace(/\D/g, '')) > 1)
+						light_status.state.light2_power = udp_message.extract_light(2)
+					if (parseInt(device_type.replace(/\D/g, '')) > 2)
+						light_status.state.light3_power = udp_message.extract_light(3)
+					proxy.emit(MESSAGE_EVENT, light_status);
+				}
+
 				else
 					proxy.emit(MESSAGE_EVENT, {
 						device_id: device_id,
@@ -554,6 +572,18 @@ class Switcher extends EventEmitter {
 						runner3_direction: udp_message.extract_direction(3),
 						runner3_child_lock: udp_message.extract_child_lock(3)
 					});
+
+				else if (this.device_type.include('sl')) {
+					const light_status = {
+						light1_power: udp_message.extract_light(1)
+					}
+					if (parseInt(this.device_type.replace(/\D/g, '')) > 1)
+						light_status.light2_power = udp_message.extract_light(2)
+					if (parseInt(this.device_type.replace(/\D/g, '')) > 2)
+						light_status.light3_power = udp_message.extract_light(3)
+					this.emit(STATUS_EVENT, light_status);
+				}
+
 				else // if (device_type.includes('runner'))
 					this.emit(STATUS_EVENT, {
 						position: udp_message.extract_position(),
