@@ -678,7 +678,7 @@ class Switcher extends EventEmitter {
 		if (this.p_session) return this.p_session;
 		try {
 			this.p_session = await new Promise(async (resolve, reject) => {
-				let data = "fef052000232a100" + P_SESSION + "340001000000000000000000" + this._get_time_stamp() + "00000000000000000000f0fe1c00" +
+				let data = "fef052000232a100" + P_SESSION + "340001000000000000000000" + this._get_time_stamp() + "00000000000000000000f0fe1e00" +
 					this.phone_id + "0000" + this.device_pass + "00000000000000000000000000000000000000000000000000000000";
 				data = this._crc_sign_full_packet_com_key(data, P_KEY);
 				this.log("login...");
