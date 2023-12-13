@@ -73,10 +73,11 @@ class ConnectionError extends Error {
 
 
 class Switcher extends EventEmitter {
-	constructor(device_id, switcher_ip, log, listen, device_type, remote, token) {
+	constructor(device_id, switcher_ip, log, listen, device_type, remote, token, key) {
 		super();
 		this.device_id = device_id;
 		this.switcher_ip = switcher_ip;
+		this.device_key = key;
 		this.device_type = device_type || 'unknown';
 		this.phone_id = '0000';
 		if (token)
@@ -110,6 +111,7 @@ class Switcher extends EventEmitter {
 				var device_id = udp_message.extract_device_id();
 				var device_name = udp_message.extract_device_name();
 				var device_type = udp_message.extract_type();
+				var device_key = udp_message.extract_device_key();
 				if (device_type === 'breeze')
 					var remote = udp_message.extract_remote();
 				if (identifier && identifier !== device_id && identifier !== device_name && identifier !== ipaddr) {
@@ -118,7 +120,7 @@ class Switcher extends EventEmitter {
 				}
 
 				// log(`Found ${device_name} (${ipaddr})!`);
-				proxy.emit(READY_EVENT, new Switcher(device_id, ipaddr, log, false, device_type, remote));
+				proxy.emit(READY_EVENT, new Switcher(device_id, ipaddr, log, false, device_type, remote, device_key));
 				clearTimeout(timeout);
 				socket.close();
 				socket = null;
@@ -178,6 +180,7 @@ class Switcher extends EventEmitter {
 						device_id: device_id,
 						device_ip: ipaddr,
 						name: device_name,
+						device_key: udp_message.extract_device_key(),
 						type: udp_message.extract_type(),
 						state: {
 							power: udp_message.extract_switch_state(),
@@ -678,7 +681,7 @@ class Switcher extends EventEmitter {
 		if (this.p_session) return this.p_session;
 		try {
 			this.p_session = await new Promise(async (resolve, reject) => {
-				let data = "fef052000232a100" + P_SESSION + "340001000000000000000000" + this._get_time_stamp() + "00000000000000000000f0fe1e00" +
+				let data = "fef052000232a100" + P_SESSION + "340001000000000000000000" + this._get_time_stamp() + "00000000000000000000f0fe" + this.device_key + "00" +
 					this.phone_id + "0000" + this.device_pass + "00000000000000000000000000000000000000000000000000000000";
 				data = this._crc_sign_full_packet_com_key(data, P_KEY);
 				this.log("login...");

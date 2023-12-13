@@ -82,8 +82,11 @@ class SwitcherUDPMessage {
 	extract_device_name() {
 		return this.data_str.substr(38, 32).replace(/[^0-9a-zA-Z_\u0590-\u05fe\s]/g, '').replace(/\0/g, ''); // remove leftovers after the name
 	}
+	
+	extract_device_key() {
+		return this.data_hex.substr(80, 2)
+	}
 
-    
 	extract_remote() {
 		const remote = this.data_str.match(/(?<=_[A-Z0-9]{4}.*)([A-Z0-9]{8})/)
 		if (remote && remote.length)
