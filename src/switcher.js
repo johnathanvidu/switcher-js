@@ -115,11 +115,11 @@ class Switcher extends EventEmitter {
 				if (device_type === 'breeze')
 					var remote = udp_message.extract_remote();
 				if (identifier && identifier !== device_id && identifier !== device_name && identifier !== ipaddr) {
-					log(`Found ${device_name} (${ipaddr}) - Not the device we're looking for!`);
+					this.log(`Found ${device_name} (${ipaddr}) - Not the device we're looking for!`);
 					return;
 				}
 
-				// log(`Found ${device_name} (${ipaddr})!`);
+				// this.log(`Found ${device_name} (${ipaddr})!`);
 				proxy.emit(READY_EVENT, new Switcher(device_id, ipaddr, log, false, device_type, remote, device_key));
 				clearTimeout(timeout);
 				socket.close();
@@ -139,7 +139,7 @@ class Switcher extends EventEmitter {
 
 		if (discovery_timeout);
 		timeout = setTimeout(() => {
-			log(`stopping discovery, closing sockets`);
+			this.log(`stopping discovery, closing sockets`);
 			sockets.forEach(socket => {
 				socket.close();
 				socket = null;
@@ -147,7 +147,7 @@ class Switcher extends EventEmitter {
 		}, discovery_timeout * 1000);
 
 		proxy.close = () => {
-			log('closing discover socket');
+			this.log('closing discover socket');
 			sockets.forEach(socket => {
 				socket.close();
 			})
@@ -170,7 +170,7 @@ class Switcher extends EventEmitter {
 				var device_id = udp_message.extract_device_id();
 				var device_name = udp_message.extract_device_name();
 				if (identifier && identifier !== device_id && identifier !== device_name && identifier !== ipaddr) {
-					log(`Found ${device_name} (${ipaddr}) - Not the device we're looking for!`);
+					this.log(`Found ${device_name} (${ipaddr}) - Not the device we're looking for!`);
 					return;
 				}
 
@@ -290,12 +290,17 @@ class Switcher extends EventEmitter {
 		})
 
 		proxy.close = () => {
-			log('closing discover socket');
+			this.log('closing discover socket');
 			sockets.forEach(socket => {
 				socket.close();
 			})
 		}
 		return proxy;
+	}
+
+	update_device_key(key) {
+		this.log('device key updated with', key)
+		this.device_key = key
 	}
 
 	turn_off() {
@@ -542,6 +547,7 @@ class Switcher extends EventEmitter {
 			if (device_id === this.device_id) {
 				if (!this.newType)
 					this.emit(STATUS_EVENT, {
+						device_key: udp_message.extract_device_key(),
 						power: udp_message.extract_switch_state(),
 						remaining_seconds: udp_message.extract_shutdown_remaining_seconds(),
 						default_shutdown_seconds: udp_message.extract_default_shutdown_seconds(),
